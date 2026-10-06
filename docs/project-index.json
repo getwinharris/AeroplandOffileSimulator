@@ -3,7 +3,7 @@
   "note": "Authoritative inventory of what exists. If it is not here, it does not exist \u2014 do not assume, add it first.",
   "summary": {
     "swift_files": 9,
-    "types": 22,
+    "types": 26,
     "screens": [
       "CelebrationView",
       "ContentView",
@@ -15,12 +15,28 @@
       "SceneKitFlyView"
     ],
     "planes": [
-      "red-jet",
-      "blue-prop",
-      "yellow-biplane",
-      "green-glider",
-      "pink-jumbo",
-      "orange-rocket"
+      "cessna-trainer",
+      "jumbo-jet",
+      "twin-prop",
+      "retro-biplane",
+      "bush-plane",
+      "rescue-heli"
+    ],
+    "model_files": [
+      "An2_aeroflot.png",
+      "WWIairplane.mtl",
+      "an2.mtl",
+      "an2.obj",
+      "cessna.mtl",
+      "cessna.obj",
+      "heli.mtl",
+      "heli.obj",
+      "heli.png",
+      "paxjet.mtl",
+      "paxjet.obj",
+      "twinprop.mtl",
+      "twinprop.obj",
+      "ww1.obj"
     ],
     "test_files": 1
   },
@@ -56,11 +72,12 @@
         }
       ],
       "functions": [
-        "SCNXAxisToAngle",
+        "loadRealPlane",
         "makePlaneNode",
+        "proceduralPlane",
         "setBoost",
         "spinPropeller",
-        "wingNode"
+        "walk"
       ]
     },
     {
@@ -154,6 +171,22 @@
         {
           "kind": "struct",
           "name": "CelebrationView"
+        },
+        {
+          "kind": "struct",
+          "name": "SpeedTape"
+        },
+        {
+          "kind": "struct",
+          "name": "AltitudeTape"
+        },
+        {
+          "kind": "struct",
+          "name": "CompassStrip"
+        },
+        {
+          "kind": "struct",
+          "name": "Horizon"
         },
         {
           "kind": "struct",

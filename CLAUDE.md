@@ -72,8 +72,9 @@ build can still ship — never push red to `main`.
   `MainMenuView.swift`, `PlaneSelectionView.swift`, `FlyView.swift`).
   Big buttons, rounded fonts, no reading required — follow the kid-safe pattern.
 - **Game world:** SceneKit in `Sources/.../Game/` (`FlightScene.swift` is the
-  world + per-frame flight loop; `PlaneFactory.swift` builds all 3D planes
-  procedurally in code; `SoundManager.swift` synthesises all audio offline).
+  world + per-frame flight loop; `PlaneFactory.swift` loads the real `.obj`
+  model files from `Resources/Planes/` (auto-centre/scale/orient);
+  `SoundManager.swift` synthesises all audio offline).
 - **State:** `Sources/.../Models/` (`GameState.swift` is the single
   `ObservableObject`; `Plane.swift` is the 6-plane catalogue).
 - **Runtime store:** none. No files written at runtime, no network, no database.

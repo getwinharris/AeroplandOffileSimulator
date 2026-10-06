@@ -46,6 +46,7 @@ struct HelpView: View {
                 HelpRow(emoji: "🟠", text: "Fly through ORANGE RINGS for bonus cheers!")
                 HelpRow(emoji: "😊", text: "You can't crash! The plane just bounces and giggles.")
                 HelpRow(emoji: "🔙", text: "Press ESC anytime to come back to the menu.")
+                HelpRow(emoji: "🎨", text: "Real 3D planes! Cessna-style model by wobba89 (CC-BY 3.0) — all others CC0. Full credits: docs/FreeAssets.md")
             }
             .padding(24)
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24))

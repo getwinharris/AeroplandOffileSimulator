@@ -23,15 +23,20 @@ cd AeroplandOffileSimulator
 open "dist/Aeroplane Simulator Offline.app"
 ```
 
-## 🛩️ The 6 planes (menu → tap to pick)
-| Plane | Vibe | Speed |
+## 🛩️ The 6 planes — real 3D model files, MSFS-style (menu → tap to pick)
+| Plane | Real model | Speed |
 |---|---|---|
-| Ruby Jet 🛩️ | super fast + zoomy | ●●● |
-| Blue Buddy ✈️ | easiest steering | ●● |
-| Sunny Biplane 🛫 | double wings | ●● |
-| Gerry Glider 🪂 | floats soft + slow | ● |
-| Pinky Jumbo 🎀 | big + cuddly | ● |
-| Rocket Rory 🚀 | to the stars! | ●●● |
+| Skyhawk Trainer 🛩️ | Cessna-style high-wing (CC-BY wobba89) | ●● |
+| Sky Jumbo ✈️ | passenger airliner | ●● |
+| Twin Otter 🛫 | twin-turboprop | ●●● |
+| Retro Biplane 🎪 | red WWI Fokker-style biplane | ●● |
+| Bushmaster 🌲 | Antonov An-2, Aeroflot livery | ● |
+| Rescue Heli 🚁 | cartoon rescue helicopter | ●● |
+
+All models are real `.obj` files in `Sources/.../Resources/Planes/` (CC0 except
+the Cessna, credited in-game) rendered natively with SceneKit — no three.js,
+no web tech, fully offline. Cockpit instruments included: airspeed tape,
+altitude tape, compass strip + artificial horizon. See `docs/FreeAssets.md`.
 
 ## 🖱️ Controls (Mac)
 - **Mouse move** — steer (no clicking needed!)
@@ -88,5 +93,6 @@ docs/FreeAssets.md                 # which free 3D packs are resale-safe
   fully offline → trivial review).
 
 ## 📄 Licence
-© 2026 GetWinHarris. All code + procedural art in this repo is yours to sell.
+© 2026 GetWinHarris. All code in this repo is yours to sell. 3D models:
+CC0 except Cessna-style (CC-BY 3.0 wobba89, credited in-game) — see `docs/FreeAssets.md`.
 CC0 packs stay CC0 — see `docs/FreeAssets.md`.

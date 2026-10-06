@@ -33,6 +33,13 @@ CONCEPTS = [
     ('plane:green-glider', 'plane', 'Gerry Glider', 'Glider style: extra-wide wings, slowest.', 'Sources/AeroplaneSimulatorOffline/Models/Plane.swift', ['glider']),
     ('plane:pink-jumbo', 'plane', 'Pinky Jumbo', 'Jumbo style with upper hump.', 'Sources/AeroplaneSimulatorOffline/Models/Plane.swift', ['jumbo']),
     ('plane:orange-rocket', 'plane', 'Rocket Rory', 'Rocket style, fastest (46), exhaust flame.', 'Sources/AeroplaneSimulatorOffline/Models/Plane.swift', ['rocket']),
+    # model files (real 3D assets — see docs/FreeAssets.md for licences)
+    ('asset:cessna-obj', 'asset', 'Cessna trainer model file', 'OBJ+MTL, CC-BY 3.0 wobba89, converted with Blender.', 'Sources/AeroplaneSimulatorOffline/Resources/Planes/cessna.obj', ['3d', 'cc-by']),
+    ('asset:paxjet-obj', 'asset', 'Passenger jet model file', 'OBJ+MTL, CC0, converted with Blender.', 'Sources/AeroplaneSimulatorOffline/Resources/Planes/paxjet.obj', ['3d']),
+    ('asset:twinprop-obj', 'asset', 'Twin turboprop model file', 'OBJ+MTL, CC0, converted with Blender.', 'Sources/AeroplaneSimulatorOffline/Resources/Planes/twinprop.obj', ['3d']),
+    ('asset:ww1-obj', 'asset', 'WWI biplane model file', 'OBJ direct download, CC0, painted with our WWIairplane.mtl.', 'Sources/AeroplaneSimulatorOffline/Resources/Planes/ww1.obj', ['3d']),
+    ('asset:an2-obj', 'asset', 'An-2 bush plane model file', 'FBX CC0, converted with assimp, textured.', 'Sources/AeroplaneSimulatorOffline/Resources/Planes/an2.obj', ['3d']),
+    ('asset:heli-obj', 'asset', 'Helicopter model file', 'FBX CC0, converted with assimp, textured.', 'Sources/AeroplaneSimulatorOffline/Resources/Planes/heli.obj', ['3d']),
     # distribution
     ('dist:app', 'dist', 'Click-to-install .app', 'Assembled + ad-hoc signed by ./aero build-app.', 'dist/Aeroplane Simulator Offline.app', ['install']),
     ('dist:dmg', 'dist', 'Drag-to-install .dmg', 'DMG with Applications symlink; checksum-verified by ./aero verify.', 'dist/Aeroplane-Simulator-Offline-1.0.0.dmg', ['install']),

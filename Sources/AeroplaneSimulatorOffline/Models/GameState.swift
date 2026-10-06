@@ -11,6 +11,9 @@ final class GameState: ObservableObject {
     @Published var rings: Int = 0
     @Published var speedKnots: Int = 0
     @Published var altitude: Int = 0
+    @Published var heading: Double = 0
+    @Published var pitchDeg: Double = 0
+    @Published var bankDeg: Double = 0
     @Published var isBoosting: Bool = false
     @Published var showCelebration: Bool = false
     @Published var soundOn: Bool = true

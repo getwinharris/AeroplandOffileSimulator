@@ -10,7 +10,8 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "AeroplaneSimulatorOffline",
-            path: "Sources/AeroplaneSimulatorOffline"
+            path: "Sources/AeroplaneSimulatorOffline",
+            resources: [.copy("Resources")]
         ),
         .testTarget(
             name: "AeroplaneSimulatorOfflineTests",

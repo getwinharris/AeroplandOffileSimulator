@@ -26,7 +26,7 @@ final class FlightScene: SCNScene, SCNSceneRendererDelegate {
 
     var onStar: (() -> Void)?
     var onRing: (() -> Void)?
-    var onStats: ((Int, Int, Bool) -> Void)?
+    var onStats: ((Int, Int, Bool, CGFloat, CGFloat, CGFloat) -> Void)? // speed, alt, boost, headingDeg, pitchDeg, bankDeg
 
     convenience init(plane: KidPlane) {
         self.init()
@@ -266,8 +266,13 @@ final class FlightScene: SCNScene, SCNSceneRendererDelegate {
         updateCamera(snap: false)
         let knots = Int(velocity * 1.9)
         let alt = Int(max(0, pos.y * 3))
+        var hdg = -yaw * 180 / CGFloat.pi
+        hdg = hdg.truncatingRemainder(dividingBy: 360)
+        if hdg < 0 { hdg += 360 }
+        let bankNow = -CGFloat(mouseSteer.dx) * CGFloat(sensitivity) * CGFloat(plane.turnSpeed) * 0.9
+        let pitchNow = pitch
         DispatchQueue.main.async {
-            self.onStats?(knots, alt, boosting)
+            self.onStats?(knots, alt, boosting, hdg, pitchNow * 180 / CGFloat.pi, bankNow * 180 / CGFloat.pi)
         }
     }
 

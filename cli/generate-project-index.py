@@ -35,7 +35,9 @@ def main():
         if area == "Views":
             screens.update(t["name"] for t in types if t["name"].endswith("View"))
     test_files = sorted(str(p.relative_to(ROOT)) for p in TESTS.rglob("*.swift")) if TESTS.exists() else []
-    planes = ["red-jet", "blue-prop", "yellow-biplane", "green-glider", "pink-jumbo", "orange-rocket"]
+    planes = ["cessna-trainer", "jumbo-jet", "twin-prop", "retro-biplane", "bush-plane", "rescue-heli"]
+    resdir = ROOT / "Sources" / "AeroplaneSimulatorOffline" / "Resources" / "Planes"
+    assets = sorted(p.name for p in resdir.glob("*")) if resdir.exists() else []
     data = {
         "generated_by": "cli/generate-project-index.py",
         "note": "Authoritative inventory of what exists. If it is not here, it does not exist — do not assume, add it first.",
@@ -44,6 +46,7 @@ def main():
             "types": sum(len(u["types"]) for u in units),
             "screens": sorted(screens),
             "planes": planes,
+            "model_files": assets,
             "test_files": len(test_files),
         },
         "units": units,

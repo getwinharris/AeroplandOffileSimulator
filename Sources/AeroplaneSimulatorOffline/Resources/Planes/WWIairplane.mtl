@@ -1,0 +1,42 @@
+# Hand-authored paint for ww1.obj (shipped without materials).
+# Matches the usemtl names in the file. Fokker-style WWI livery.
+newmtl TijeloAvion
+Kd 0.72 0.12 0.12
+Ka 0.1 0.02 0.02
+Ks 0.3 0.3 0.3
+Ns 40
+illum 2
+
+newmtl Brown
+Kd 0.35 0.22 0.12
+illum 2
+
+newmtl Crno
+Kd 0.05 0.05 0.05
+illum 2
+
+newmtl Gun
+Kd 0.15 0.15 0.17
+Ks 0.6 0.6 0.6
+Ns 80
+illum 2
+
+newmtl Material
+Kd 0.88 0.82 0.68
+illum 2
+
+newmtl Material.003
+Kd 0.88 0.82 0.68
+illum 2
+
+newmtl Material.004
+Kd 0.72 0.12 0.12
+illum 2
+
+newmtl Radkapna
+Kd 0.1 0.1 0.1
+illum 2
+
+newmtl Tocak
+Kd 0.08 0.08 0.08
+illum 2

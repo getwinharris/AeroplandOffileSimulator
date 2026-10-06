@@ -35,6 +35,16 @@ struct ContentView: View {
             case .help: HelpView()
             }
         }
+        .onAppear {
+            // Dev launch args (screenshots, smoke tests): e.g.
+            //   open ... --args --fly --plane jumbo-jet
+            let args = CommandLine.arguments
+            if let i = args.firstIndex(of: "--plane"), i + 1 < args.count,
+               let p = KidPlane.all.first(where: { $0.id == args[i + 1] }) {
+                game.selectedPlane = p
+            }
+            if args.contains("--fly") { game.screen = .fly }
+        }
     }
 }
 

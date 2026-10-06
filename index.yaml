@@ -28,8 +28,9 @@ query_examples:
   - "rg -n -A6 'type: 'plane'' index.yaml"
   - "rg -n '<term>' docs/project-index.json map.mmd index.yaml"
 summary:
-  concepts: 27
+  concepts: 33
   by_type:
+    asset: 6
     dist: 2
     doc: 4
     game: 3
@@ -163,6 +164,49 @@ concepts:
     resource: "Sources/AeroplaneSimulatorOffline/Models/Plane.swift"
     tags:
       - "rocket"
+  - id: "asset:cessna-obj"
+    type: "asset"
+    title: "Cessna trainer model file"
+    description: "OBJ+MTL, CC-BY 3.0 wobba89, converted with Blender."
+    resource: "Sources/AeroplaneSimulatorOffline/Resources/Planes/cessna.obj"
+    tags:
+      - "3d"
+      - "cc-by"
+  - id: "asset:paxjet-obj"
+    type: "asset"
+    title: "Passenger jet model file"
+    description: "OBJ+MTL, CC0, converted with Blender."
+    resource: "Sources/AeroplaneSimulatorOffline/Resources/Planes/paxjet.obj"
+    tags:
+      - "3d"
+  - id: "asset:twinprop-obj"
+    type: "asset"
+    title: "Twin turboprop model file"
+    description: "OBJ+MTL, CC0, converted with Blender."
+    resource: "Sources/AeroplaneSimulatorOffline/Resources/Planes/twinprop.obj"
+    tags:
+      - "3d"
+  - id: "asset:ww1-obj"
+    type: "asset"
+    title: "WWI biplane model file"
+    description: "OBJ direct download, CC0, painted with our WWIairplane.mtl."
+    resource: "Sources/AeroplaneSimulatorOffline/Resources/Planes/ww1.obj"
+    tags:
+      - "3d"
+  - id: "asset:an2-obj"
+    type: "asset"
+    title: "An-2 bush plane model file"
+    description: "FBX CC0, converted with assimp, textured."
+    resource: "Sources/AeroplaneSimulatorOffline/Resources/Planes/an2.obj"
+    tags:
+      - "3d"
+  - id: "asset:heli-obj"
+    type: "asset"
+    title: "Helicopter model file"
+    description: "FBX CC0, converted with assimp, textured."
+    resource: "Sources/AeroplaneSimulatorOffline/Resources/Planes/heli.obj"
+    tags:
+      - "3d"
   - id: "dist:app"
     type: "dist"
     title: "Click-to-install .app"
