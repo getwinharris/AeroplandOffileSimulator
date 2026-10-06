@@ -1,0 +1,25 @@
+graph LR
+  %% Screens → Views → Models → Game systems
+  screen_menu(menu)
+  screen_planes(planes)
+  screen_fly(fly)
+  screen_help(help)
+  App_ContentView --> MainMenuView
+  App_ContentView --> PlaneSelectionView
+  App_ContentView --> FlyView
+  App_ContentView --> HelpView
+  MainMenuView --> GameState
+  PlaneSelectionView --> GameState
+  PlaneSelectionView --> KidPlane
+  FlyView --> GameState
+  FlyView --> FlightScene
+  FlightScene --> PlaneFactory
+  FlightScene --> KidPlane
+  FlightScene --> SoundManager
+  GameState --> SoundManager
+  GameState --> KidPlane
+  package_app.sh --> AppBundle
+  AppBundle --> DMG
+  GameState -.->|stars/rings/speed| FlyView_HUD
+  FlyView -.->|mouse+SHIFT| FlightScene
+  FlightScene -.->|collect| GameState

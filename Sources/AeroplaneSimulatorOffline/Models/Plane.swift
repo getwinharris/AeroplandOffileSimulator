@@ -4,7 +4,7 @@ import SwiftUI
 /// All 3D models are built procedurally in code (PlaneFactory) so the app
 /// is 100% offline and App-Store-safe (no third-party licence issues).
 /// To use free CC0 assets instead, drop .usdz files into
-/// `Resources/Planes/` named e.g. `red-jet.usdz` — see Docs/FreeAssets.md.
+/// `Resources/Planes/` named e.g. `red-jet.usdz` — see docs/FreeAssets.md.
 struct KidPlane: Identifiable, Hashable {
     let id: String
     let name: String

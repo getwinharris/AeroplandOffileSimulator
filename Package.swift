@@ -11,6 +11,11 @@ let package = Package(
         .executableTarget(
             name: "AeroplaneSimulatorOffline",
             path: "Sources/AeroplaneSimulatorOffline"
+        ),
+        .testTarget(
+            name: "AeroplaneSimulatorOfflineTests",
+            dependencies: ["AeroplaneSimulatorOffline"],
+            path: "Tests/AeroplaneSimulatorOfflineTests"
         )
     ]
 )

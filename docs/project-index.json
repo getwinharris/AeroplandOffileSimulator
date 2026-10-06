@@ -1,0 +1,218 @@
+{
+  "generated_by": "cli/generate-project-index.py",
+  "note": "Authoritative inventory of what exists. If it is not here, it does not exist \u2014 do not assume, add it first.",
+  "summary": {
+    "swift_files": 9,
+    "types": 22,
+    "screens": [
+      "CelebrationView",
+      "ContentView",
+      "FlySCNView",
+      "FlyView",
+      "HelpView",
+      "MainMenuView",
+      "PlaneSelectionView",
+      "SceneKitFlyView"
+    ],
+    "planes": [
+      "red-jet",
+      "blue-prop",
+      "yellow-biplane",
+      "green-glider",
+      "pink-jumbo",
+      "orange-rocket"
+    ],
+    "test_files": 1
+  },
+  "units": [
+    {
+      "file": "Sources/AeroplaneSimulatorOffline/Game/FlightScene.swift",
+      "area": "Game",
+      "types": [
+        {
+          "kind": "class",
+          "name": "FlightScene"
+        }
+      ],
+      "functions": [
+        "buildWorld",
+        "distance",
+        "lerp",
+        "makeBalloon",
+        "makeCloud",
+        "makeRing",
+        "makeStar",
+        "renderer",
+        "updateCamera"
+      ]
+    },
+    {
+      "file": "Sources/AeroplaneSimulatorOffline/Game/PlaneFactory.swift",
+      "area": "Game",
+      "types": [
+        {
+          "kind": "enum",
+          "name": "PlaneFactory"
+        }
+      ],
+      "functions": [
+        "SCNXAxisToAngle",
+        "makePlaneNode",
+        "setBoost",
+        "spinPropeller",
+        "wingNode"
+      ]
+    },
+    {
+      "file": "Sources/AeroplaneSimulatorOffline/Game/SoundManager.swift",
+      "area": "Game",
+      "types": [
+        {
+          "kind": "class",
+          "name": "SoundManager"
+        },
+        {
+          "kind": "enum",
+          "name": "ToneType"
+        }
+      ],
+      "functions": [
+        "boing",
+        "click",
+        "fanfare",
+        "pickup",
+        "ring",
+        "speak",
+        "tone"
+      ]
+    },
+    {
+      "file": "Sources/AeroplaneSimulatorOffline/Models/GameState.swift",
+      "area": "Models",
+      "types": [
+        {
+          "kind": "class",
+          "name": "GameState"
+        },
+        {
+          "kind": "enum",
+          "name": "Screen"
+        }
+      ],
+      "functions": [
+        "collectStar",
+        "flyThroughRing",
+        "startFlying"
+      ]
+    },
+    {
+      "file": "Sources/AeroplaneSimulatorOffline/Models/Plane.swift",
+      "area": "Models",
+      "types": [
+        {
+          "kind": "struct",
+          "name": "KidPlane"
+        },
+        {
+          "kind": "enum",
+          "name": "PlaneStyle"
+        }
+      ],
+      "functions": []
+    },
+    {
+      "file": "Sources/AeroplaneSimulatorOffline/Views/App.swift",
+      "area": "Views",
+      "types": [
+        {
+          "kind": "struct",
+          "name": "AeroplaneSimulatorOfflineApp"
+        },
+        {
+          "kind": "struct",
+          "name": "ContentView"
+        },
+        {
+          "kind": "struct",
+          "name": "BigKidButton"
+        }
+      ],
+      "functions": []
+    },
+    {
+      "file": "Sources/AeroplaneSimulatorOffline/Views/FlyView.swift",
+      "area": "Views",
+      "types": [
+        {
+          "kind": "struct",
+          "name": "FlyView"
+        },
+        {
+          "kind": "struct",
+          "name": "HudPill"
+        },
+        {
+          "kind": "struct",
+          "name": "CelebrationView"
+        },
+        {
+          "kind": "struct",
+          "name": "SceneKitFlyView"
+        },
+        {
+          "kind": "class",
+          "name": "FlySCNView"
+        }
+      ],
+      "functions": [
+        "makeCoordinator",
+        "makeNSView",
+        "steer",
+        "updateNSView"
+      ]
+    },
+    {
+      "file": "Sources/AeroplaneSimulatorOffline/Views/MainMenuView.swift",
+      "area": "Views",
+      "types": [
+        {
+          "kind": "struct",
+          "name": "MainMenuView"
+        },
+        {
+          "kind": "struct",
+          "name": "HelpView"
+        },
+        {
+          "kind": "struct",
+          "name": "HelpRow"
+        }
+      ],
+      "functions": []
+    },
+    {
+      "file": "Sources/AeroplaneSimulatorOffline/Views/PlaneSelectionView.swift",
+      "area": "Views",
+      "types": [
+        {
+          "kind": "struct",
+          "name": "PlaneSelectionView"
+        },
+        {
+          "kind": "struct",
+          "name": "PlaneCard"
+        },
+        {
+          "kind": "struct",
+          "name": "SpeedDots"
+        }
+      ],
+      "functions": []
+    }
+  ],
+  "tests": [
+    "Tests/AeroplaneSimulatorOfflineTests/CatalogueTests.swift"
+  ],
+  "entry": "Sources/AeroplaneSimulatorOffline/Views/App.swift",
+  "bundle_id": "com.getwinharris.aeroplane-simulator-offline"
+}
