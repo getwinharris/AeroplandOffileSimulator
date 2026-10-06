@@ -79,7 +79,7 @@ build can still ship — never push red to `main`.
 - **Runtime store:** none. No files written at runtime, no network, no database.
   All 3D art and sound are generated in code — this is what makes the app
   legally sellable (see `docs/FreeAssets.md` before adding any downloaded asset).
-- **Distribution:** `scripts/package_app.sh` wraps the release binary into
+- **Distribution:** `./aero build-app` wraps the release binary into
   `dist/Aeroplane Simulator Offline.app` + drag-to-install `.dmg`.
 
 ## Environment
@@ -89,7 +89,7 @@ build can still ship — never push red to `main`.
 - Bundle ID: `com.getwinharris.aeroplane-simulator-offline`.
 - Ad-hoc signing (`codesign -s -`) is for local/dev installs; downloaded copies
   trigger a Gatekeeper malware warning. The fix is Developer ID signing +
-  `./scripts/notarize.sh` (paid Developer Program required). App Store
+  `./aero notarize` (paid Developer Program required). App Store
   distribution requires a paid Developer ID + notarization (see
   `.claude/skills/release/SKILL.md`).
 
@@ -99,7 +99,7 @@ This is a Mac GUI app. **Verify by building AND launching**, not just compiling:
 
 ```bash
 ./aero ci                  # Verification Gate: build → test → drift → smoke
-./scripts/package_app.sh   # click-to-install .app + .dmg in dist/
+./aero build-app               # click-to-install .app + .dmg in dist/
 open "dist/Aeroplane Simulator Offline.app"   # launch smoke: must stay alive, no crash
 ```
 

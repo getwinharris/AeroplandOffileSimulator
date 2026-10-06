@@ -15,7 +15,7 @@ each, and it lives in `CLAUDE.md`.
 Quick orientation:
 - Skills: canonical project skills live in `.claude/skills/<name>/SKILL.md`
 - Wiring: `docs/systematic-map.mmd`
-- Click-to-install build: `dist/Aeroplane Simulator Offline.app` + `.dmg` (see `scripts/package_app.sh`)
+- Click-to-install build: `dist/Aeroplane Simulator Offline.app` + `.dmg` (built by `./aero build-app`)
 - Local observability: `./aero logs` (unified log for the bundle id), `docs/observability.md`
 
 Before any change: `./aero map`.

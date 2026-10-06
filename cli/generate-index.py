@@ -34,7 +34,7 @@ CONCEPTS = [
     ('plane:pink-jumbo', 'plane', 'Pinky Jumbo', 'Jumbo style with upper hump.', 'Sources/AeroplaneSimulatorOffline/Models/Plane.swift', ['jumbo']),
     ('plane:orange-rocket', 'plane', 'Rocket Rory', 'Rocket style, fastest (46), exhaust flame.', 'Sources/AeroplaneSimulatorOffline/Models/Plane.swift', ['rocket']),
     # distribution
-    ('dist:app', 'dist', 'Click-to-install .app', 'Assembled + ad-hoc signed by scripts/package_app.sh.', 'dist/Aeroplane Simulator Offline.app', ['install']),
+    ('dist:app', 'dist', 'Click-to-install .app', 'Assembled + ad-hoc signed by ./aero build-app.', 'dist/Aeroplane Simulator Offline.app', ['install']),
     ('dist:dmg', 'dist', 'Drag-to-install .dmg', 'DMG with Applications symlink; checksum-verified by ./aero verify.', 'dist/Aeroplane-Simulator-Offline-1.0.0.dmg', ['install']),
     # docs & process
     ('doc:contract', 'doc', 'Agent contract', 'Binding rules, Verification Gate, testing, release.', 'CLAUDE.md', ['process']),

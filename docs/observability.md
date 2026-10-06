@@ -27,7 +27,7 @@ top 5 frames point at the guilty file (usually `FlightScene.swift` renderer or
 
 ```bash
 ./aero ci                                   # gate green first
-./scripts/package_app.sh 1.0.0             # fresh bundle
+./aero build-app 1.0.0             # fresh bundle
 open "dist/Aeroplane Simulator Offline.app" # must open, stay alive ≥10s
 ./aero logs                                # confirm no errors
 ```

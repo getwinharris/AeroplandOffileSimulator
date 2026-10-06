@@ -166,7 +166,7 @@ concepts:
   - id: "dist:app"
     type: "dist"
     title: "Click-to-install .app"
-    description: "Assembled + ad-hoc signed by scripts/package_app.sh."
+    description: "Assembled + ad-hoc signed by ./aero build-app."
     resource: "dist/Aeroplane Simulator Offline.app"
     tags:
       - "install"

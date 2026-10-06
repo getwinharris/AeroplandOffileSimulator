@@ -27,7 +27,7 @@ EDGES = [
     ("FlightScene", "SoundManager"),
     ("GameState", "SoundManager"),
     ("GameState", "KidPlane"),
-    ("package_app.sh", "AppBundle"),
+    ("aero_build-app", "AppBundle"),
     ("AppBundle", "DMG"),
 ]
 

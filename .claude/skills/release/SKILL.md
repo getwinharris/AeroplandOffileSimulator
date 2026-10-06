@@ -6,13 +6,13 @@ description: Use when packaging the .app/.dmg, signing, versioning, or submittin
 
 - Follow the root `AGENTS.md` repository contract. The Verification Gate
   (`./aero ci`) must be green before any release.
-- Build: `./scripts/package_app.sh <version>` → `dist/` gets the signed
+- Build: `./aero build-app <version>` → `dist/` gets the signed
   `.app` (double-click to run) + `.dmg` (drag to Applications to install).
   Then `./aero verify` (plist lint, signature, DMG checksum).
 - Versioning: bump `CFBundleVersion` via the script arg, tag `v<version>`,
   `gh release create` with the `.dmg` attached.
 - Signing ladder: ad-hoc (`codesign -s -`, local installs, Gatekeeper warns on
-  downloaded copies) → Developer ID + `./scripts/notarize.sh` (Gatekeeper-clean
+  downloaded copies) → Developer ID + `./aero notarize` (Gatekeeper-clean
   DMG, silent install; needs paid Developer Program + cert) → App Store
   distribution (Archive from full Xcode, see `AppStore/Listing.md` — Apple
   signs it, no notarization needed).

@@ -19,7 +19,7 @@ Or build the installer yourself:
 ```bash
 gh repo clone getwinharris/AeroplandOffileSimulator
 cd AeroplandOffileSimulator
-./scripts/package_app.sh 1.0.0   # → dist/*.app + dist/*.dmg
+./aero build-app 1.0.0   # → dist/*.app + dist/*.dmg
 open "dist/Aeroplane Simulator Offline.app"
 ```
 
@@ -75,7 +75,7 @@ Sources/AeroplaneSimulatorOffline/
   Models/ (Plane catalogue, GameState)
   Game/   (PlaneFactory, FlightScene, SoundManager)
 Tests/                             # XCTest (full Xcode/CI) + cli/check_catalogue.py (everywhere)
-scripts/package_app.sh             # click-to-install .app + .dmg builder
+aero                           # the ONLY entry point: map/index/ci/build-app/verify/logs
 AppStore/Listing.md                # store text, keywords, privacy, review notes
 docs/FreeAssets.md                 # which free 3D packs are resale-safe
 ```

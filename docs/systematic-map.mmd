@@ -18,7 +18,7 @@ graph LR
   FlightScene --> SoundManager
   GameState --> SoundManager
   GameState --> KidPlane
-  package_app.sh --> AppBundle
+  aero_build-app --> AppBundle
   AppBundle --> DMG
   GameState -.->|stars/rings/speed| FlyView_HUD
   FlyView -.->|mouse+SHIFT| FlightScene

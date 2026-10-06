@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
-# aero — project CLI for Aeroplane Simulator Offline (macOS Swift/SceneKit game)
-# Mirrors the bapXphp workflow: map → change → ci (Verification Gate) → release.
+# aero — the ONLY entry point for this repo (mirrors bapXphp: map → change → ci → release).
+#   ./aero help        this message
+#   ./aero map         regenerate + show wiring
+#   ./aero index       regenerate project-index + index.yaml
+#   ./aero ci          Verification Gate (build → tests → drift → bundle smoke)
+#   ./aero build-app [ver]   build click-to-install .app + .dmg into dist/
+#   ./aero notarize [ver]    notarize + staple the DMG (needs Developer ID, see below)
+#   ./aero verify      bundle smoke (plist, signature, DMG checksum)
+#   ./aero logs        unified-log tail + crash reports
+#   ./aero status      git status + recent commits
+#   ./aero skills      list agent skills
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
@@ -11,11 +20,92 @@ warn() { printf "${Y}%s${N}\n" "$*" >&2; }
 err()  { printf "${R}%s${N}\n" "$*" >&2; }
 die()  { err "$*"; exit 1; }
 
+APP_NAME="Aeroplane Simulator Offline"
+BUNDLE_ID="com.getwinharris.aeroplane-simulator-offline"
+
+build_app() {
+  local VERSION="${1:-1.0.0}" DIST="dist" STAGE="dist/dmg-stage"
+  local SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+  echo "▶ Building release binary…"
+  swift build -c release --disable-sandbox
+  echo "▶ Rendering icon…"
+  rm -rf /tmp/AeroIcon
+  swift cli/make_icon.swift /tmp/AeroIcon
+  iconutil -c icns /tmp/AeroIcon/AppIcon.iconset -o /tmp/AeroIcon/AppIcon.icns
+  echo "▶ Assembling .app bundle…"
+  rm -rf "$DIST/$APP_NAME.app" "$STAGE"
+  mkdir -p "$DIST/$APP_NAME.app/Contents/MacOS" "$DIST/$APP_NAME.app/Contents/Resources"
+  cp -f ".build/release/AeroplaneSimulatorOffline" "$DIST/$APP_NAME.app/Contents/MacOS/$APP_NAME"
+  chmod +x "$DIST/$APP_NAME.app/Contents/MacOS/$APP_NAME"
+  cp -f /tmp/AeroIcon/AppIcon.icns "$DIST/$APP_NAME.app/Contents/Resources/AppIcon.icns"
+  cat > "$DIST/$APP_NAME.app/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key><string>$APP_NAME</string>
+    <key>CFBundleDisplayName</key><string>$APP_NAME</string>
+    <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
+    <key>CFBundleVersion</key><string>${VERSION}</string>
+    <key>CFBundleShortVersionString</key><string>${VERSION}</string>
+    <key>CFBundleExecutable</key><string>${APP_NAME}</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>LSMinimumSystemVersion</key><string>13.0</string>
+    <key>NSHighResolutionCapable</key><true/>
+    <key>LSApplicationCategoryType</key><string>public.app-category.family-games</string>
+</dict>
+</plist>
+PLIST
+  echo -n "APPL????" > "$DIST/$APP_NAME.app/Contents/PkgInfo"
+  plutil -lint "$DIST/$APP_NAME.app/Contents/Info.plist"
+  echo "▶ Signing (${SIGN_IDENTITY})…"
+  if [[ "$SIGN_IDENTITY" == "-" ]]; then
+    codesign --force --deep --sign - "$DIST/$APP_NAME.app"
+  else
+    codesign --force --deep --options runtime --timestamp --sign "$SIGN_IDENTITY" \
+      --entitlements AeroplaneSimulatorOffline.entitlements "$DIST/$APP_NAME.app"
+  fi
+  codesign --verify --verbose "$DIST/$APP_NAME.app"
+  echo "▶ Building DMG installer…"
+  mkdir -p "$STAGE"
+  cp -R "$DIST/$APP_NAME.app" "$STAGE/"
+  ln -sfn /Applications "$STAGE/Applications"
+  local DMG="$DIST/Aeroplane-Simulator-Offline-${VERSION}.dmg"
+  rm -f "$DMG"
+  hdiutil create -volname "$APP_NAME" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
+  rm -rf "$STAGE"
+  codesign --force --sign "$SIGN_IDENTITY" "$DMG"
+  ok "APP: $DIST/$APP_NAME.app"
+  ok "DMG: $DMG"
+}
+
+notarize_dmg() {
+  # Needs: paid Developer Program + "Developer ID Application" cert in keychain.
+  #   SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./aero build-app 1.0.1
+  #   APPLE_ID="you@x.com" APP_PASSWORD="xxxx-xxxx-xxxx-xxxx" TEAM_ID="TEAMID" ./aero notarize 1.0.1
+  local VERSION="${1:-1.0.0}" DMG="dist/Aeroplane-Simulator-Offline-${VERSION}.dmg"
+  local APP="dist/$APP_NAME.app"
+  [[ -f "$DMG" ]] || die "missing $DMG — run ./aero build-app first"
+  for v in APPLE_ID APP_PASSWORD TEAM_ID; do
+    [[ -n "${(P)v:-}" ]] || die "env $v is not set"
+  done
+  codesign -dv "$APP" 2>&1 | grep -q "Authority=Developer ID Application" \
+    || die ".app is not Developer-ID signed — rebuild with SIGN_IDENTITY set"
+  echo "▶ Submitting to Apple notary service (1–10 min)…"
+  xcrun notarytool submit "$DMG" \
+    --apple-id "$APPLE_ID" --password "$APP_PASSWORD" --team-id "$TEAM_ID" --wait
+  echo "▶ Stapling notarization ticket…"
+  xcrun stapler staple "$DMG"
+  spctl -a -t open --context context:primary-signature -v "$DMG" \
+    && ok "Gatekeeper-clean: $DMG"
+}
+
 cmd="${1:-help}"; shift || true
 
 case "$cmd" in
 help|--help|-h)
-  sed -n '2,60p' "$0" | sed 's/^# //; s/^#//'
+  sed -n '2,15p' "$0" | sed 's/^# //; s/^#//'
   ;;
 status)
   git status --short --branch
@@ -40,21 +130,21 @@ index)
   ./cli/generate-index.py
   ;;
 logs)
-  # Local observability: unified-log tail for our bundle id (last 2 min).
-  # Usage: ./aero logs [--last 5m]
-  LAST="${2:-2m}"
+  LAST="${1:-2m}"
   log show --last "$LAST" --predicate 'process == "Aeroplane Simulator Offline"' --info 2>/dev/null \
     | tail -n 40 || warn "no log entries (app may not have run in the last $LAST)"
   echo "── crash reports ──"
   ls -lt ~/Library/Logs/DiagnosticReports/ 2>/dev/null | grep -i -m5 aero || echo "(no Aeroplane crash reports)"
   ;;
 build-app)
-  ./scripts/package_app.sh "${1:-1.0.0}"
+  build_app "${1:-1.0.0}"
+  ;;
+notarize)
+  notarize_dmg "${1:-1.0.0}"
   ;;
 verify)
-  # Bundle smoke: layout + plist + signature + DMG checksum.
-  APP='dist/Aeroplane Simulator Offline.app'
-  BIN="$APP/Contents/MacOS/Aeroplane Simulator Offline"
+  APP="dist/$APP_NAME.app"
+  BIN="$APP/Contents/MacOS/$APP_NAME"
   [ -x "$BIN" ] || die "missing executable: $BIN (run ./aero build-app first)"
   plutil -lint "$APP/Contents/Info.plist"
   codesign --verify --verbose "$APP"
