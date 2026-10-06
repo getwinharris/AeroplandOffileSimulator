@@ -87,7 +87,9 @@ build can still ship — never push red to `main`.
 - macOS 13+ SDK, Swift 5.9+, SwiftPM. Full Xcode (not just CLT) is required
   for Run/Archive; `swift build` on CLT verifies logic only.
 - Bundle ID: `com.getwinharris.aeroplane-simulator-offline`.
-- Ad-hoc signing (`codesign -s -`) is for local/dev installs. App Store
+- Ad-hoc signing (`codesign -s -`) is for local/dev installs; downloaded copies
+  trigger a Gatekeeper malware warning. The fix is Developer ID signing +
+  `./scripts/notarize.sh` (paid Developer Program required). App Store
   distribution requires a paid Developer ID + notarization (see
   `.claude/skills/release/SKILL.md`).
 

@@ -11,9 +11,11 @@ description: Use when packaging the .app/.dmg, signing, versioning, or submittin
   Then `./aero verify` (plist lint, signature, DMG checksum).
 - Versioning: bump `CFBundleVersion` via the script arg, tag `v<version>`,
   `gh release create` with the `.dmg` attached.
-- Signing ladder: ad-hoc (`codesign -s -`, local installs, Gatekeeper asks
-  once) → Developer ID + notarization (silent install) → App Store
-  distribution (Archive from full Xcode, see `AppStore/Listing.md`).
+- Signing ladder: ad-hoc (`codesign -s -`, local installs, Gatekeeper warns on
+  downloaded copies) → Developer ID + `./scripts/notarize.sh` (Gatekeeper-clean
+  DMG, silent install; needs paid Developer Program + cert) → App Store
+  distribution (Archive from full Xcode, see `AppStore/Listing.md` — Apple
+  signs it, no notarization needed).
 - This machine has CLT only: `swift build` + `.app`/`.dmg` assembly works here;
   Run/Archive/notarization needs full Xcode.
 - Never commit `dist/` to git (gitignored) — releases carry the binaries.

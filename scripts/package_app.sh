@@ -45,8 +45,18 @@ PLIST
 echo -n "APPL????" > "$DIST/$APP_NAME.app/Contents/PkgInfo"
 plutil -lint "$DIST/$APP_NAME.app/Contents/Info.plist"
 
-echo "▶ Ad-hoc signing (double-clickable, no paid cert needed)…"
-codesign --force --deep --sign - "$DIST/$APP_NAME.app"
+echo "▶ Signing…"
+# SIGN_IDENTITY: "-" (ad-hoc, default) or your Developer ID, e.g.
+#   SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./scripts/package_app.sh 1.0.0
+SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+if [[ "$SIGN_IDENTITY" == "-" ]]; then
+  echo "  Ad-hoc signing (Gatekeeper will warn on downloaded copies — see scripts/notarize.sh for the fix)…"
+  codesign --force --deep --sign - "$DIST/$APP_NAME.app"
+else
+  echo "  Developer ID signing with hardened runtime: $SIGN_IDENTITY"
+  codesign --force --deep --options runtime --timestamp --sign "$SIGN_IDENTITY" \
+    --entitlements AeroplaneSimulatorOffline.entitlements "$DIST/$APP_NAME.app"
+fi
 codesign --verify --verbose "$DIST/$APP_NAME.app"
 
 echo "▶ Building DMG installer…"
@@ -56,7 +66,7 @@ ln -sfn /Applications "$STAGE/Applications"
 DMG="$DIST/Aeroplane-Simulator-Offline-${VERSION}.dmg"
 rm -f "$DMG"
 hdiutil create -volname "$APP_NAME" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
-codesign --force --sign - "$DMG"
+codesign --force --sign "$SIGN_IDENTITY" "$DMG"
 echo "✅ APP: $DIST/$APP_NAME.app"
 echo "✅ DMG: $DMG"
 ls -la "$DIST"
