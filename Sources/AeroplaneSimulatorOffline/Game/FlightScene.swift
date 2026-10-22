@@ -3,64 +3,113 @@ import AppKit
 import SwiftUI
 import GameplayKit
 
-/// Ultra-realistic offline 3D world with procedural PBR terrain, animated ocean,
-/// volumetric clouds, atmospheric sky, and flight-simulator-grade physics.
-/// Kid-proof defaults remain, but the visuals now rival commercial flight sims.
-///
-/// Features:
-/// - Noise-based heightmap terrain with biome colouring (grass / sand / rock / snow)
-/// - Animated Gerstner-wave ocean with Fresnel depth-tinted water
-/// - Volumetric layered clouds with self-shadow and wind drift
-/// - Atmospheric sky gradient that shifts with altitude
-/// - Sun with bloom / glow and real-time shadow casting
-/// - PBR (physically based rendering) materials on every surface
-/// - Enhanced camera: smooth chase, speed-dependent shake, altitude-aware FOV
-/// - Target practice (balloons), collectible stars / rings
-///
-/// Fully offline — no external assets, CC0 procedural only.
+/// Telemetry passed every frame to the GTA VI-styled HUD
+struct FlightTelemetry {
+    var altitude: CGFloat
+    var verticalSpeed: CGFloat
+    var airspeed: CGFloat
+    var headingDeg: Double
+    var isBoosting: Bool
+    var pitchDeg: Double
+    var bankDeg: Double
+    var throttlePct: Int
+    var gForce: Double
+    var gearDown: Bool
+    var cameraMode: Int
+    var zone: String
+    var subzone: String
+    var posX: CGFloat
+    var posZ: CGFloat
+    var nearestAirfield: String
+    var distToNearestAirfield: CGFloat
+    var onRunway: Bool
+}
+
+/// Runway definitions across the State of Leonida
+struct RunwayZone {
+    let id: String
+    let code: String
+    let name: String
+    let zone: String
+    let position: SCNVector3
+    let length: CGFloat
+    let width: CGFloat
+    let headingDeg: Double
+    let elevation: CGFloat
+}
+
+/// GTA VI State of Leonida Simulation Scene with:
+/// - Full State of Leonida map recreation (Mount Kalaga, Lake Leonida, Ambrosia, Port Gellhorn, Vice City, Everglades, Keys)
+/// - 6 Airfields with realistic asphalt runways, threshold markings, edge/PAPI lights, hangars, control towers, and windsocks
+/// - GTA V flight physics: pitch, roll, rudder yaw, variable throttle, gear toggle, runway taxiing, takeoff rotation, and landing touchdown
+/// - Multiple camera perspectives: Close Chase, Wide Chase, and Cockpit / Nose View
 final class FlightScene: SCNScene, SCNSceneRendererDelegate {
     var planeNode: SCNNode!
     var cameraNode: SCNNode!
     var plane: KidPlane = KidPlane.all[1]
 
-    // Controls (set from FlyView tracking area)
+    // Traditional & Mouse Controls
     var mouseSteer = CGVector(dx: 0, dy: 0) // -1...1
     var boostHeld = false
     var sensitivity: Float = 1.0
     var invertY = false
 
-    // Realistic flight state
-    private var altitude: CGFloat = 50     // height above ground (m)
-    private var verticalSpeed: CGFloat = 0 // m/s, positive = climbing
-    private var airspeed: CGFloat = 26     // m/s, calibrated per plane
-    private var heading: CGFloat = 0       // radians, true north = +X
-    private var bank: CGFloat = 0          // roll angle (radians)
-    private var angleOfAttack: CGFloat = 0 // radians, lift generator
-    private var sideSlip: CGFloat = 0      // rudder coordination
-    private var gForce: CGFloat = 1.0
+    // GTA V Keyboard Flight Inputs
+    var pitchInput: CGFloat = 0     // -1 (dive) to +1 (climb)
+    var rollInput: CGFloat = 0      // -1 (bank left) to +1 (bank right)
+    var rudderInput: CGFloat = 0    // -1 (yaw left) to +1 (yaw right)
+    var throttleChange: CGFloat = 0 // -1 (slow down) to +1 (speed up)
+    var throttlePct: Int = 60       // 0% to 100%
+    var gearDown: Bool = true       // Landing gear
+    var cameraMode: Int = 0         // 0: Close Chase, 1: Wide Chase, 2: Cockpit
 
-    // Physics params per plane (from the catalogue)
-    private var wingLoading: CGFloat = 2.0   // weight / wing area approx
+    // Realistic Flight State
+    private var altitude: CGFloat = 2.0     // height above ground (m)
+    private var verticalSpeed: CGFloat = 0  // m/s, positive = climbing
+    private var airspeed: CGFloat = 22      // m/s
+    private var heading: CGFloat = CGFloat.pi / 2 // radians, 90 deg = facing East
+    private var bank: CGFloat = 0           // roll angle (radians)
+    private var angleOfAttack: CGFloat = 0  // radians
+    private var sideSlip: CGFloat = 0       // rudder coordination
+    private var gForce: CGFloat = 1.0
+    private var isGrounded: Bool = true
+    private var wasAirborne: Bool = false
+
+    // Physics constants
     private var stallSpeed: CGFloat = 18
 
     // World & effects
     private var starNodes: [SCNNode] = []
     private var ringNodes: [SCNNode] = []
     private var cloudNodes: [SCNNode] = []
-    private var targetNodes: [SCNNode] = []      // target balloons for practice
+    private var targetNodes: [SCNNode] = []
     private var oceanNode: SCNNode?
+    private var lakeNode: SCNNode?
     private var skyDomeNode: SCNNode?
+    private var beaconNodes: [SCNNode] = []
     private var time: TimeInterval = 0
 
-    // Terrain heightmap cache (generated from noise)
+    // Terrain heightmap (State of Leonida)
     private var heightMap: [[Float]] = []
-    private let terrainGridSize = 128       // resolution of the noise grid
-    private let terrainWorldSize: CGFloat = 800
+    private let terrainGridSize = 140
+    private let terrainWorldSize: CGFloat = 1400
+
+    // Runway zones catalog
+    let runways: [RunwayZone] = [
+        RunwayZone(id: "vcia", code: "VCIA", name: "Vice City International", zone: "VICE CITY", position: SCNVector3(220, 1.2, 120), length: 260, width: 14, headingDeg: 90, elevation: 1.2),
+        RunwayZone(id: "keys", code: "KEYS", name: "Leonida Keys Airstrip", zone: "LEONIDA KEYS", position: SCNVector3(80, 1.2, 420), length: 160, width: 9, headingDeg: 120, elevation: 1.2),
+        RunwayZone(id: "kalaga", code: "KLGA", name: "Mount Kalaga Ridge", zone: "MOUNT KALAGA", position: SCNVector3(-80, 48.2, -360), length: 180, width: 9, headingDeg: 0, elevation: 48.2),
+        RunwayZone(id: "gellhorn", code: "PORT", name: "Port Gellhorn Airfield", zone: "PORT GELLHORN", position: SCNVector3(-320, 1.2, -60), length: 200, width: 10, headingDeg: 90, elevation: 1.2),
+        RunwayZone(id: "ambrosia", code: "AMBR", name: "Ambrosia Dustoff Strip", zone: "AMBROSIA", position: SCNVector3(40, 6.2, -100), length: 150, width: 8, headingDeg: 30, elevation: 6.2),
+        RunwayZone(id: "everglades", code: "EVRG", name: "Grassrivers Bush Strip", zone: "GRASSRIVERS", position: SCNVector3(-160, 1.2, 200), length: 140, width: 8, headingDeg: 150, elevation: 1.2)
+    ]
 
     var onStar: (() -> Void)?
     var onRing: (() -> Void)?
     var onTargetHit: ((CGFloat, CGFloat) -> Void)?
-    var onStats: ((CGFloat, CGFloat, CGFloat, CGFloat, Bool, CGFloat, CGFloat) -> Void)? // alt, verticalSpeed, airspeed, headingDeg, isBoosting, pitchDeg, bankDeg
+    var onTelemetry: ((FlightTelemetry) -> Void)?
+    var onTouchdown: ((String) -> Void)?
+    var onStats: ((CGFloat, CGFloat, CGFloat, CGFloat, Bool, CGFloat, CGFloat) -> Void)?
 
     convenience init(plane: KidPlane) {
         self.init()
@@ -69,15 +118,15 @@ final class FlightScene: SCNScene, SCNSceneRendererDelegate {
         buildWorld()
     }
 
-    // MARK: - Noise-based heightmap generation
+    // MARK: - Leonida Heightmap Generation
 
     private func generateHeightMap() {
         let source = GKPerlinNoiseSource(
-            frequency: 0.008,
-            octaveCount: 6,
-            persistence: 0.52,
-            lacunarity: 2.1,
-            seed: 42
+            frequency: 0.005,
+            octaveCount: 5,
+            persistence: 0.5,
+            lacunarity: 2.0,
+            seed: 77
         )
         let noise = GKNoise(source)
         let map = GKNoiseMap(
@@ -85,42 +134,109 @@ final class FlightScene: SCNScene, SCNSceneRendererDelegate {
             size: vector_double2(Double(terrainWorldSize), Double(terrainWorldSize)),
             origin: vector_double2(0, 0),
             sampleCount: vector_int2(Int32(terrainGridSize), Int32(terrainGridSize)),
-            seamless: true
+            seamless: false
         )
 
         heightMap = Array(repeating: Array(repeating: Float(0), count: terrainGridSize), count: terrainGridSize)
+
         for y in 0..<terrainGridSize {
             for x in 0..<terrainGridSize {
-                // Noise returns -1...1, scale to terrain heights
-                let raw = map.value(at: vector_int2(Int32(x), Int32(y)))
-                // Shape: flatten centre for runway, raise edges for mountains
-                let cx = Float(x) / Float(terrainGridSize) - 0.5
-                let cz = Float(y) / Float(terrainGridSize) - 0.5
-                let distFromCentre = sqrt(cx * cx + cz * cz) * 2.0
-                let runwayFlat = max(0, 1.0 - distFromCentre * 4.0) // flatten near centre
-                let mountainBoost = max(0, distFromCentre - 0.3) * 2.5 // boost edges
+                let worldX = (CGFloat(x) / CGFloat(terrainGridSize - 1) - 0.5) * terrainWorldSize
+                let worldZ = (CGFloat(y) / CGFloat(terrainGridSize - 1) - 0.5) * terrainWorldSize
+                let raw = Float(map.value(at: vector_int2(Int32(x), Int32(y))))
 
-                var h = raw * 30.0 * (1.0 - runwayFlat * 0.8)
-                h += mountainBoost * abs(raw) * 60.0
-                // Ocean floor below sea level
-                if h < -5 { h = max(h, -20) }
+                // Base height from geographical zones
+                var h = calculateLeonidaBaseHeight(x: worldX, z: worldZ, noise: raw)
+
+                // Flatten exactly at all 6 runway locations
+                for r in runways {
+                    let dx = worldX - r.position.x
+                    let dz = worldZ - r.position.z
+                    let dist = sqrt(dx * dx + dz * dz)
+                    if dist < r.length * 0.75 {
+                        let blend = Swift.max(0, 1.0 - (dist / (r.length * 0.75)))
+                        h = Float(Double(h) * (1.0 - Double(blend)) + Double(r.elevation) * Double(blend))
+                    }
+                }
+
                 heightMap[y][x] = h
             }
         }
     }
 
-    /// Sample the heightmap at world coordinates with bilinear interpolation
-    private func sampleHeight(worldX: CGFloat, worldZ: CGFloat) -> CGFloat {
-        let halfSize = terrainWorldSize / 2
-        // Wrap coordinates
-        var wx = worldX.truncatingRemainder(dividingBy: terrainWorldSize)
-        var wz = worldZ.truncatingRemainder(dividingBy: terrainWorldSize)
-        if wx < -halfSize { wx += terrainWorldSize }
-        if wx > halfSize { wx -= terrainWorldSize }
-        if wz < -halfSize { wz += terrainWorldSize }
-        if wz > halfSize { wz -= terrainWorldSize }
+    /// Geographical height shaping for State of Leonida
+    private func calculateLeonidaBaseHeight(x: CGFloat, z: CGFloat, noise: Float) -> Float {
+        // Distance from island core
+        let dx = (x - 20) / 480.0
+        let dz = (z - 50) / 580.0
+        let dist = sqrt(dx * dx + dz * dz)
 
-        // Map to grid
+        // Beyond coast is ocean
+        if dist > 1.08 {
+            return -8.0 + noise * 3.0
+        }
+
+        // Coastal falloff
+        let coastFactor = Float(Swift.max(0, 1.0 - (dist - 0.85) / 0.23))
+
+        // 1. Mount Kalaga (North): high rocky mountains (z < -220)
+        if z < -200 {
+            let mDist = sqrt(pow((x + 60) / 200.0, 2) + pow((z + 360) / 160.0, 2))
+            let mountainHeight = Float(Swift.max(0, 1.0 - mDist)) * 80.0 * (0.6 + abs(noise) * 0.8)
+            return Swift.max(2.0, mountainHeight * coastFactor)
+        }
+
+        // 2. Lake Leonida (Northeast freshwater depression): x in [60...180], z in [-300...-160]
+        let lakeDx = (x - 120) / 70.0
+        let lakeDz = (z - 230) / 60.0
+        let lakeDist = sqrt(lakeDx * lakeDx + lakeDz * lakeDz)
+        if lakeDist < 1.0 {
+            return -2.5 + noise * 0.4
+        }
+
+        // 3. Ambrosia (Center-North Farmlands): gentle rolling hills
+        if z >= -220 && z < -40 && abs(x) < 220 {
+            let rolling = 5.0 + noise * 4.0
+            return Swift.max(2.0, rolling * coastFactor)
+        }
+
+        // 4. Port Gellhorn (West coast harbor): flat coastal bay
+        if x < -160 && z >= -160 && z < 50 {
+            return Swift.max(1.2, (2.0 + noise * 1.5) * coastFactor)
+        }
+
+        // 5. Vice City (East/Southeast metropolis): flat coastal barrier islands
+        if x > 40 && z >= -60 && z < 280 {
+            // Canals depression
+            let isCanal = abs(sin(x * 0.05) * cos(z * 0.05)) < 0.15 && x < 260
+            if isCanal { return -1.5 }
+            return Swift.max(1.5, (2.5 + noise * 1.0) * coastFactor)
+        }
+
+        // 6. Grassrivers / Everglades (Southwest swamp): very low wetlands
+        if x < 40 && z >= 40 && z < 320 {
+            return Swift.max(0.6, (1.2 + noise * 0.8) * coastFactor)
+        }
+
+        // 7. Leonida Keys (Southern Archipelago curve)
+        if z >= 320 {
+            let keyDist = abs(x - (80 - (z - 320) * 0.4))
+            if keyDist < 75 && dist < 1.05 {
+                return Swift.max(1.2, (2.0 + noise * 1.0) * coastFactor)
+            }
+            return -6.0 + noise * 2.0
+        }
+
+        // General countryside
+        return Swift.max(1.5, (3.5 + noise * 3.0) * coastFactor)
+    }
+
+    /// Bilinear interpolation of terrain height
+    func sampleHeight(worldX: CGFloat, worldZ: CGFloat) -> CGFloat {
+        let halfSize = terrainWorldSize / 2
+        let wx = worldX.clamped(to: -halfSize...halfSize)
+        let wz = worldZ.clamped(to: -halfSize...halfSize)
+
         let gx = (wx + halfSize) / terrainWorldSize * CGFloat(terrainGridSize - 1)
         let gz = (wz + halfSize) / terrainWorldSize * CGFloat(terrainGridSize - 1)
 
@@ -129,81 +245,68 @@ final class FlightScene: SCNScene, SCNSceneRendererDelegate {
         let fx = gx - CGFloat(ix)
         let fz = gz - CGFloat(iz)
 
-        // Bilinear interpolation
         let h00 = CGFloat(heightMap[iz][ix])
-        let h10 = CGFloat(heightMap[iz][min(ix + 1, terrainGridSize - 1)])
-        let h01 = CGFloat(heightMap[min(iz + 1, terrainGridSize - 1)][ix])
-        let h11 = CGFloat(heightMap[min(iz + 1, terrainGridSize - 1)][min(ix + 1, terrainGridSize - 1)])
+        let h10 = CGFloat(heightMap[iz][Swift.min(ix + 1, terrainGridSize - 1)])
+        let h01 = CGFloat(heightMap[Swift.min(iz + 1, terrainGridSize - 1)][ix])
+        let h11 = CGFloat(heightMap[Swift.min(iz + 1, terrainGridSize - 1)][Swift.min(ix + 1, terrainGridSize - 1)])
 
         let top = h00 + (h10 - h00) * fx
         let bot = h01 + (h11 - h01) * fx
         return top + (bot - top) * fz
     }
 
-    // MARK: - World build with ultra-real PBR
+    // MARK: - World Construction
 
     private func buildWorld() {
-        // ─── Atmospheric sky dome ───
         buildSkyDome()
-
-        // ─── Lighting: sun + ambient + fill ───
         buildLighting()
-
-        // ─── PBR terrain mesh ───
         buildTerrain()
-
-        // ─── Animated ocean ───
         buildOcean()
-
-        // ─── Volumetric clouds (multiple layers) ───
+        buildLakeLeonida()
         buildClouds()
+        buildAllAirfields()
+        buildViceCitySkyline()
+        buildLeonidaLandmarks()
 
-        // ─── Environmental details ───
-        buildEnvironment()
-
-        // ─── Target balloons for practice ───
-        for _ in 0..<12 {
+        // Practice targets & balloons
+        for _ in 0..<16 {
             let b = makeTargetBalloon()
-            b.position = SCNVector3(CGFloat.random(in: -300...300), CGFloat.random(in: 30...100), CGFloat.random(in: -300...300))
+            b.position = SCNVector3(CGFloat.random(in: -450...450), CGFloat.random(in: 35...120), CGFloat.random(in: -450...450))
             rootNode.addChildNode(b)
             targetNodes.append(b)
         }
 
-        // ─── Plane at runway ───
+        // Spawn plane at VCIA Runway 09 ready for takeoff
         planeNode = PlaneFactory.makePlaneNode(for: plane)
-        planeNode.position = SCNVector3(0, 12, 30)  // start on runway area
+        let spawn = runways[0] // VCIA
+        planeNode.position = SCNVector3(spawn.position.x - 80, spawn.elevation + 0.35, spawn.position.z)
+        heading = CGFloat.pi / 2 // pointing down runway
+        planeNode.eulerAngles = SCNVector3(0, heading, 0)
         rootNode.addChildNode(planeNode)
 
-        // ─── Camera ───
+        // Camera setup
         cameraNode = SCNNode()
         cameraNode.camera = SCNCamera()
         cameraNode.camera?.fieldOfView = 55
-        cameraNode.camera?.zFar = 2000
+        cameraNode.camera?.zFar = 3000
         cameraNode.camera?.zNear = 0.5
-        // HDR bloom for sun glow
         cameraNode.camera?.wantsHDR = true
-        cameraNode.camera?.bloomIntensity = 0.4
-        cameraNode.camera?.bloomThreshold = 0.85
-        cameraNode.camera?.bloomBlurRadius = 8.0
-        cameraNode.camera?.colorFringeIntensity = 0.3
-        cameraNode.camera?.colorFringeStrength = 1.5
+        cameraNode.camera?.bloomIntensity = 0.45
+        cameraNode.camera?.bloomThreshold = 0.8
         cameraNode.camera?.motionBlurIntensity = 0.15
-        cameraNode.camera?.wantsDepthOfField = false
         rootNode.addChildNode(cameraNode)
         updateCamera(snap: true)
     }
 
-    // MARK: - Sky Dome (atmospheric gradient)
+    // MARK: - Sky & Lighting
 
     private func buildSkyDome() {
-        // Large inverted sphere with atmospheric gradient
-        let skyGeo = SCNSphere(radius: 900)
+        let skyGeo = SCNSphere(radius: 1400)
         skyGeo.segmentCount = 48
         let skyMat = SCNMaterial()
         skyMat.lightingModel = .constant
         skyMat.isDoubleSided = true
 
-        // Procedural atmospheric gradient texture
         let skyTex = generateSkyGradientTexture(size: 512)
         skyMat.diffuse.contents = skyTex
         skyMat.diffuse.wrapS = .clamp
@@ -211,40 +314,36 @@ final class FlightScene: SCNScene, SCNSceneRendererDelegate {
         skyGeo.materials = [skyMat]
 
         skyDomeNode = SCNNode(geometry: skyGeo)
-        skyDomeNode?.renderingOrder = -10 // render first
+        skyDomeNode?.renderingOrder = -10
         rootNode.addChildNode(skyDomeNode!)
 
-        // Atmospheric fog
-        fogStartDistance = 250
-        fogEndDistance = 1200
-        fogColor = NSColor(calibratedRed: 0.72, green: 0.85, blue: 0.95, alpha: 0.45)
-        fogDensityExponent = 1.5
+        fogStartDistance = 350
+        fogEndDistance = 1600
+        fogColor = NSColor(calibratedRed: 0.70, green: 0.85, blue: 0.96, alpha: 0.4)
+        fogDensityExponent = 1.3
     }
 
     private func generateSkyGradientTexture(size: Int) -> NSImage {
         let img = NSImage(size: NSSize(width: size, height: size))
         img.lockFocus()
         for y in 0..<size {
-            let t = CGFloat(y) / CGFloat(size) // 0 = bottom, 1 = top
+            let t = CGFloat(y) / CGFloat(size)
             let r: CGFloat, g: CGFloat, b: CGFloat
-            if t < 0.15 {
-                // Horizon haze (warm orange-pink)
-                let f = t / 0.15
-                r = 0.95 - f * 0.35
-                g = 0.78 - f * 0.15
-                b = 0.70 + f * 0.15
-            } else if t < 0.5 {
-                // Lower sky (light blue)
-                let f = (t - 0.15) / 0.35
-                r = 0.60 - f * 0.25
-                g = 0.63 + f * 0.17
-                b = 0.85 + f * 0.10
+            if t < 0.18 {
+                let f = t / 0.18
+                r = 0.98 - f * 0.38
+                g = 0.76 - f * 0.14
+                b = 0.70 + f * 0.18
+            } else if t < 0.55 {
+                let f = (t - 0.18) / 0.37
+                r = 0.60 - f * 0.28
+                g = 0.62 + f * 0.20
+                b = 0.88 + f * 0.08
             } else {
-                // Upper sky (deep blue)
-                let f = (t - 0.5) / 0.5
-                r = 0.35 - f * 0.20
-                g = 0.80 - f * 0.35
-                b = 0.95 - f * 0.15
+                let f = (t - 0.55) / 0.45
+                r = 0.32 - f * 0.18
+                g = 0.82 - f * 0.35
+                b = 0.96 - f * 0.15
             }
             NSColor(calibratedRed: r, green: g, blue: b, alpha: 1).set()
             NSRect(x: 0, y: y, width: size, height: 1).fill()
@@ -253,848 +352,894 @@ final class FlightScene: SCNScene, SCNSceneRendererDelegate {
         return img
     }
 
-    // MARK: - Lighting (PBR + shadows)
-
     private func buildLighting() {
-        // Primary sun — directional with cascaded shadows
         let sun = SCNNode()
         sun.light = SCNLight()
         sun.light?.type = .directional
-        sun.light?.intensity = 1200
-        sun.light?.color = NSColor(calibratedRed: 1.0, green: 0.96, blue: 0.88, alpha: 1)
+        sun.light?.color = NSColor(calibratedRed: 1.0, green: 0.96, blue: 0.88, alpha: 1.0)
+        sun.light?.intensity = 1100
         sun.light?.castsShadow = true
         sun.light?.shadowMode = .deferred
-        sun.light?.shadowMapSize = CGSize(width: 2048, height: 2048)
-        sun.light?.shadowCascadeCount = 3
-        sun.light?.shadowCascadeSplittingFactor = 0.15
+        sun.light?.shadowSampleCount = 4
         sun.light?.shadowRadius = 3.0
-        sun.light?.shadowSampleCount = 8
-        sun.light?.shadowBias = 1.0
-        sun.light?.maximumShadowDistance = 300
-        sun.eulerAngles = SCNVector3(-0.6, 0.4, 0)
-        sun.name = "sun-light"
+        sun.eulerAngles = SCNVector3(-CGFloat.pi * 0.32, CGFloat.pi * 0.22, 0)
         rootNode.addChildNode(sun)
 
-        // Ambient fill (blueish sky bounce)
         let ambient = SCNNode()
         ambient.light = SCNLight()
         ambient.light?.type = .ambient
-        ambient.light?.intensity = 500
-        ambient.light?.color = NSColor(calibratedRed: 0.65, green: 0.75, blue: 0.90, alpha: 1)
+        ambient.light?.color = NSColor(calibratedRed: 0.45, green: 0.55, blue: 0.65, alpha: 1.0)
+        ambient.light?.intensity = 450
         rootNode.addChildNode(ambient)
-
-        // Secondary fill light from below (ground bounce simulation)
-        let bounce = SCNNode()
-        bounce.light = SCNLight()
-        bounce.light?.type = .directional
-        bounce.light?.intensity = 150
-        bounce.light?.color = NSColor(calibratedRed: 0.55, green: 0.7, blue: 0.5, alpha: 1) // greenish ground
-        bounce.eulerAngles = SCNVector3(0.8, 0, 0) // upward
-        rootNode.addChildNode(bounce)
-
-        // Sun orb (visible sun with bloom)
-        let sunBall = SCNNode(geometry: SCNSphere(radius: 25))
-        sunBall.position = SCNVector3(400, 320, -600)
-        let sunMat = SCNMaterial()
-        sunMat.lightingModel = .constant
-        sunMat.diffuse.contents = NSColor(calibratedRed: 1.0, green: 0.98, blue: 0.85, alpha: 1)
-        sunMat.emission.contents = NSColor(calibratedRed: 1.0, green: 0.95, blue: 0.7, alpha: 1)
-        sunBall.geometry?.materials = [sunMat]
-        rootNode.addChildNode(sunBall)
-
-        // Sun halo / glow ring
-        let halo = SCNNode(geometry: SCNSphere(radius: 55))
-        halo.position = sunBall.position
-        let haloMat = SCNMaterial()
-        haloMat.lightingModel = .constant
-        haloMat.diffuse.contents = NSColor(calibratedRed: 1.0, green: 0.95, blue: 0.8, alpha: 0.15)
-        haloMat.transparency = 0.15
-        haloMat.isDoubleSided = true
-        halo.geometry?.materials = [haloMat]
-        rootNode.addChildNode(halo)
-
-        // PBR environment lighting
-        lightingEnvironment.contents = generateEnvironmentCubemap()
-        lightingEnvironment.intensity = 1.0
     }
 
-    private func generateEnvironmentCubemap() -> NSImage {
-        // Simple sky-coloured cubemap face for PBR reflections
-        let size = 64
-        let img = NSImage(size: NSSize(width: size, height: size))
-        img.lockFocus()
-        for y in 0..<size {
-            let t = CGFloat(y) / CGFloat(size)
-            let r = 0.45 + t * 0.15
-            let g = 0.65 + t * 0.15
-            let b = 0.90 + t * 0.05
-            NSColor(calibratedRed: r, green: g, blue: b, alpha: 1).set()
-            NSRect(x: 0, y: y, width: size, height: 1).fill()
-        }
-        img.unlockFocus()
-        return img
-    }
-
-    // MARK: - PBR Terrain Mesh with noise heightmap
+    // MARK: - Terrain Mesh & PBR Biomes
 
     private func buildTerrain() {
-        let segW = terrainGridSize - 1
-        let segH = terrainGridSize - 1
-        let cellSize = Float(terrainWorldSize) / Float(segW)
-
-        // Build vertex data
         var vertices: [SCNVector3] = []
         var normals: [SCNVector3] = []
         var texCoords: [CGPoint] = []
-        var indices: [UInt32] = []
+        var indices: [Int32] = []
 
-        for z in 0..<terrainGridSize {
-            for x in 0..<terrainGridSize {
-                let wx = Float(x) * cellSize - Float(terrainWorldSize) / 2
-                let wz = Float(z) * cellSize - Float(terrainWorldSize) / 2
-                let wy = heightMap[z][x]
-                vertices.append(SCNVector3(wx, wy, wz))
-                texCoords.append(CGPoint(x: CGFloat(x) / CGFloat(segW), y: CGFloat(z) / CGFloat(segH)))
+        let gs = terrainGridSize
+        let step = terrainWorldSize / CGFloat(gs - 1)
+        let half = terrainWorldSize / 2
+
+        for y in 0..<gs {
+            for x in 0..<gs {
+                let wx = CGFloat(x) * step - half
+                let wz = CGFloat(y) * step - half
+                let h = CGFloat(heightMap[y][x])
+                vertices.append(SCNVector3(wx, h, wz))
+
+                let u = CGFloat(x) / CGFloat(gs - 1)
+                let v = CGFloat(y) / CGFloat(gs - 1)
+                texCoords.append(CGPoint(x: u, y: v))
+
+                let hL = CGFloat(heightMap[y][Swift.max(0, x - 1)])
+                let hR = CGFloat(heightMap[y][Swift.min(gs - 1, x + 1)])
+                let hD = CGFloat(heightMap[Swift.max(0, y - 1)][x])
+                let hU = CGFloat(heightMap[Swift.min(gs - 1, y + 1)][x])
+
+                let normal = SCNVector3(-(hR - hL) / (2 * step), 1.0, -(hU - hD) / (2 * step)).normalized()
+                normals.append(normal)
             }
         }
 
-        // Compute face normals and smooth
-        normals = Array(repeating: SCNVector3(0, 1, 0), count: vertices.count)
+        for y in 0..<(gs - 1) {
+            for x in 0..<(gs - 1) {
+                let topLeft = Int32(y * gs + x)
+                let topRight = Int32(y * gs + (x + 1))
+                let bottomLeft = Int32((y + 1) * gs + x)
+                let bottomRight = Int32((y + 1) * gs + (x + 1))
 
-        // Build triangle indices
-        for z in 0..<segH {
-            for x in 0..<segW {
-                let tl = UInt32(z * terrainGridSize + x)
-                let tr = tl + 1
-                let bl = tl + UInt32(terrainGridSize)
-                let br = bl + 1
-                indices.append(contentsOf: [tl, bl, tr, tr, bl, br])
+                indices.append(contentsOf: [topLeft, bottomLeft, topRight, topRight, bottomLeft, bottomRight])
             }
         }
 
-        // Compute smooth normals from adjacency
-        for z in 1..<(terrainGridSize - 1) {
-            for x in 1..<(terrainGridSize - 1) {
-                let idx = z * terrainGridSize + x
-                let hL = heightMap[z][x - 1]
-                let hR = heightMap[z][x + 1]
-                let hD = heightMap[z - 1][x]
-                let hU = heightMap[z + 1][x]
-                let nx = (hL - hR) / (2.0 * cellSize)
-                let nz = (hD - hU) / (2.0 * cellSize)
-                let len = sqrt(nx * nx + 1.0 + nz * nz)
-                normals[idx] = SCNVector3(nx / len, 1.0 / len, nz / len)
-            }
-        }
-
-        let vertexSource = SCNGeometrySource(vertices: vertices)
-        let normalSource = SCNGeometrySource(normals: normals)
+        let vertSource = SCNGeometrySource(vertices: vertices)
+        let normSource = SCNGeometrySource(normals: normals)
         let texSource = SCNGeometrySource(textureCoordinates: texCoords)
         let element = SCNGeometryElement(indices: indices, primitiveType: .triangles)
 
-        let geometry = SCNGeometry(sources: [vertexSource, normalSource, texSource], elements: [element])
-
-        // PBR terrain material with biome-coloured diffuse texture
+        let geo = SCNGeometry(sources: [vertSource, normSource, texSource], elements: [element])
         let mat = SCNMaterial()
         mat.lightingModel = .physicallyBased
-        mat.diffuse.contents = generateTerrainDiffuseTexture(size: 1024)
-        mat.diffuse.wrapS = .clamp
-        mat.diffuse.wrapT = .clamp
-        mat.roughness.contents = generateTerrainRoughnessTexture(size: 512)
-        mat.metalness.contents = NSColor.black // terrain is non-metallic
-        mat.normal.contents = generateTerrainNormalTexture(size: 512)
-        mat.normal.intensity = 0.8
-        geometry.materials = [mat]
+        mat.diffuse.contents = generateLeonidaDiffuseTexture(size: 512)
+        mat.roughness.contents = NSNumber(value: 0.85)
+        mat.metalness.contents = NSNumber(value: 0.0)
+        geo.materials = [mat]
 
-        let terrainNode = SCNNode(geometry: geometry)
-        terrainNode.castsShadow = true
+        let terrainNode = SCNNode(geometry: geo)
         rootNode.addChildNode(terrainNode)
-
-        // Runway strip (on top of terrain)
-        buildRunway()
     }
 
-    private func generateTerrainDiffuseTexture(size: Int) -> NSImage {
+    private func generateLeonidaDiffuseTexture(size: Int) -> NSImage {
         let img = NSImage(size: NSSize(width: size, height: size))
         img.lockFocus()
-        // Re-use heightmap to colour by biome
+
         for py in 0..<size {
             for px in 0..<size {
-                let gx = Int(CGFloat(px) / CGFloat(size) * CGFloat(terrainGridSize - 1))
-                let gz = Int(CGFloat(py) / CGFloat(size) * CGFloat(terrainGridSize - 1))
-                let h = heightMap[min(gz, terrainGridSize - 1)][min(gx, terrainGridSize - 1)]
+                let u = CGFloat(px) / CGFloat(size)
+                let v = CGFloat(py) / CGFloat(size)
+                let wx = (u - 0.5) * terrainWorldSize
+                let wz = (v - 0.5) * terrainWorldSize
 
-                let color: NSColor
-                if h < -8 {
-                    // Deep ocean floor (dark blue-green) — won't be visible under water
-                    color = NSColor(calibratedRed: 0.08, green: 0.15, blue: 0.25, alpha: 1)
-                } else if h < -2 {
-                    // Beach / sand
-                    let t = (h + 8) / 6.0
-                    color = NSColor(calibratedRed: CGFloat(0.88 + t * 0.05), green: CGFloat(0.82 + t * 0.02),
-                                    blue: CGFloat(0.55 + t * 0.1), alpha: 1)
-                } else if h < 8 {
-                    // Lush grass / meadow
-                    let t = (h + 2) / 10.0
-                    let variation = sin(Float(px) * 0.3) * 0.05 + cos(Float(py) * 0.4) * 0.05
-                    color = NSColor(calibratedRed: CGFloat(0.22 + variation), green: CGFloat(0.55 + t * 0.15 + variation),
-                                    blue: CGFloat(0.18 + variation * 0.5), alpha: 1)
-                } else if h < 25 {
-                    // Forest / dark green with brown hints
-                    let t = (h - 8) / 17.0
-                    color = NSColor(calibratedRed: CGFloat(0.18 + t * 0.15), green: CGFloat(0.42 - t * 0.1),
-                                    blue: CGFloat(0.12 + t * 0.05), alpha: 1)
-                } else if h < 45 {
-                    // Rock / grey-brown
-                    let t = (h - 25) / 20.0
-                    color = NSColor(calibratedRed: CGFloat(0.42 + t * 0.1), green: CGFloat(0.40 + t * 0.08),
-                                    blue: CGFloat(0.35 + t * 0.1), alpha: 1)
-                } else {
-                    // Snow caps
-                    let t = min(1.0, (h - 45) / 20.0)
-                    color = NSColor(calibratedRed: CGFloat(0.85 + t * 0.12), green: CGFloat(0.88 + t * 0.10),
-                                    blue: CGFloat(0.92 + t * 0.06), alpha: 1)
+                let h = sampleHeight(worldX: wx, worldZ: wz)
+                var r: CGFloat = 0.28, g: CGFloat = 0.55, b: CGFloat = 0.22 // default green
+
+                if h < 0.2 {
+                    // Shallow beach sand
+                    r = 0.88; g = 0.82; b = 0.65
+                } else if wz < -220 {
+                    // Mount Kalaga: Rocky mountains with pine forests and snow peaks
+                    if h > 55 {
+                        r = 0.92; g = 0.94; b = 0.96 // snow
+                    } else if h > 25 {
+                        r = 0.45; g = 0.42; b = 0.38 // rock cliffs
+                    } else {
+                        r = 0.18; g = 0.38; b = 0.20 // dark conifer forest
+                    }
+                } else if wz >= -220 && wz < -40 && abs(wx) < 220 {
+                    // Ambrosia: Patchwork crop fields (wheat gold / lush green)
+                    let pattern = (Int(wx * 0.04) + Int(wz * 0.04)) % 2 == 0
+                    if pattern {
+                        r = 0.82; g = 0.72; b = 0.35 // golden wheat
+                    } else {
+                        r = 0.25; g = 0.60; b = 0.25 // bright crops
+                    }
+                } else if wx > 60 && wz >= -60 && wz < 280 {
+                    // Vice City: Urban concrete & coastal sands
+                    if wx > 240 {
+                        r = 0.90; g = 0.85; b = 0.68 // Ocean Drive beach
+                    } else {
+                        r = 0.50; g = 0.52; b = 0.55 // urban grid
+                    }
+                } else if wx < -160 && wz >= -160 && wz < 50 {
+                    // Port Gellhorn: Industrial asphalt & gravel
+                    r = 0.42; g = 0.44; b = 0.46
+                } else if wx < 40 && wz >= 40 && wz < 320 {
+                    // Everglades: swamp marshlands
+                    r = 0.32; g = 0.42; b = 0.22
+                } else if wz >= 320 {
+                    // Leonida Keys: coral sands & tropical palms
+                    r = 0.90; g = 0.88; b = 0.75
                 }
-                color.set()
+
+                NSColor(calibratedRed: r, green: g, blue: b, alpha: 1).set()
                 NSRect(x: px, y: py, width: 1, height: 1).fill()
             }
         }
+
         img.unlockFocus()
         return img
     }
 
-    private func generateTerrainRoughnessTexture(size: Int) -> NSImage {
-        let img = NSImage(size: NSSize(width: size, height: size))
-        img.lockFocus()
-        for py in 0..<size {
-            for px in 0..<size {
-                let gx = Int(CGFloat(px) / CGFloat(size) * CGFloat(terrainGridSize - 1))
-                let gz = Int(CGFloat(py) / CGFloat(size) * CGFloat(terrainGridSize - 1))
-                let h = heightMap[min(gz, terrainGridSize - 1)][min(gx, terrainGridSize - 1)]
-
-                let roughness: CGFloat
-                if h < -2 {
-                    roughness = 0.3  // wet sand, shiny
-                } else if h < 8 {
-                    roughness = 0.85 // grass, matte
-                } else if h < 25 {
-                    roughness = 0.75 // forest
-                } else if h < 45 {
-                    roughness = 0.5  // rock, slightly shiny
-                } else {
-                    roughness = 0.4  // snow, slightly reflective
-                }
-                NSColor(white: roughness, alpha: 1).set()
-                NSRect(x: px, y: py, width: 1, height: 1).fill()
-            }
-        }
-        img.unlockFocus()
-        return img
-    }
-
-    private func generateTerrainNormalTexture(size: Int) -> NSImage {
-        // Compute normal map from heightmap gradients (tangent-space)
-        let img = NSImage(size: NSSize(width: size, height: size))
-        img.lockFocus()
-        for py in 0..<size {
-            for px in 0..<size {
-                let gx = CGFloat(px) / CGFloat(size) * CGFloat(terrainGridSize - 1)
-                let gz = CGFloat(py) / CGFloat(size) * CGFloat(terrainGridSize - 1)
-                let ix = Int(gx), iz = Int(gz)
-
-                let hC = heightMap[min(iz, terrainGridSize - 1)][min(ix, terrainGridSize - 1)]
-                let hR = heightMap[min(iz, terrainGridSize - 1)][min(ix + 1, terrainGridSize - 1)]
-                let hU = heightMap[min(iz + 1, terrainGridSize - 1)][min(ix, terrainGridSize - 1)]
-
-                let dx = (hC - hR) * 2.0
-                let dz = (hC - hU) * 2.0
-
-                // Encode to RGB (tangent-space normal map: x → R, y → G, z → B)
-                let r = CGFloat(dx * 0.5 + 0.5)
-                let g = CGFloat(dz * 0.5 + 0.5)
-                let b: CGFloat = 1.0  // z always up in tangent space
-                NSColor(calibratedRed: r.clamped(to: 0...1), green: g.clamped(to: 0...1), blue: b, alpha: 1).set()
-                NSRect(x: px, y: py, width: 1, height: 1).fill()
-            }
-        }
-        img.unlockFocus()
-        return img
-    }
-
-    // MARK: - Runway
-
-    private func buildRunway() {
-        // Asphalt runway with PBR surface
-        let runwayLength: CGFloat = 250
-        let runwayWidth: CGFloat = 8
-        let runway = SCNNode(geometry: SCNPlane(width: runwayLength, height: runwayWidth))
-        runway.position = SCNVector3(0, 0.5, 0)
-        runway.eulerAngles = SCNVector3(-CGFloat.pi / 2, 0, 0)
-
-        let runwayMat = SCNMaterial()
-        runwayMat.lightingModel = .physicallyBased
-        runwayMat.diffuse.contents = NSColor(calibratedRed: 0.15, green: 0.15, blue: 0.16, alpha: 1) // dark asphalt
-        runwayMat.roughness.contents = NSNumber(value: 0.65)
-        runwayMat.metalness.contents = NSNumber(value: 0.0)
-        runway.geometry?.materials = [runwayMat]
-        rootNode.addChildNode(runway)
-
-        // Centre line markings
-        for i in 0..<20 {
-            let line = SCNNode(geometry: SCNPlane(width: 8, height: 0.4))
-            line.position = SCNVector3(CGFloat(i) * 12 - 120, 0.55, 0)
-            line.eulerAngles = SCNVector3(-CGFloat.pi / 2, 0, 0)
-            let lineMat = SCNMaterial()
-            lineMat.lightingModel = .physicallyBased
-            lineMat.diffuse.contents = NSColor.white
-            lineMat.roughness.contents = NSNumber(value: 0.9)
-            line.geometry?.materials = [lineMat]
-            rootNode.addChildNode(line)
-        }
-
-        // Threshold markings
-        for side in [-1, 1] as [CGFloat] {
-            for i in 0..<4 {
-                let mark = SCNNode(geometry: SCNPlane(width: 1.5, height: 0.5))
-                mark.position = SCNVector3(-runwayLength / 2 + 3, 0.55, side * (CGFloat(i) + 1) * 0.8)
-                mark.eulerAngles = SCNVector3(-CGFloat.pi / 2, 0, 0)
-                mark.geometry?.firstMaterial?.lightingModel = .physicallyBased
-                mark.geometry?.firstMaterial?.diffuse.contents = NSColor.white
-                mark.geometry?.firstMaterial?.roughness.contents = NSNumber(value: 0.9)
-                rootNode.addChildNode(mark)
-            }
-        }
-
-        // Runway edge lights (orange glow points)
-        for i in stride(from: -runwayLength / 2, through: runwayLength / 2, by: 15) {
-            for side in [-1, 1] as [CGFloat] {
-                let light = SCNNode(geometry: SCNSphere(radius: 0.2))
-                light.position = SCNVector3(i, 0.6, side * (runwayWidth / 2 + 0.5))
-                let lightMat = SCNMaterial()
-                lightMat.lightingModel = .constant
-                lightMat.diffuse.contents = NSColor.orange
-                lightMat.emission.contents = NSColor(calibratedRed: 1.0, green: 0.7, blue: 0.2, alpha: 1)
-                light.geometry?.materials = [lightMat]
-                rootNode.addChildNode(light)
-            }
-        }
-    }
-
-    // MARK: - Animated Ocean
+    // MARK: - Ocean & Lake Leonida
 
     private func buildOcean() {
-        let oceanSize: CGFloat = 1200
-        let segments = 80
+        let oceanSize: CGFloat = 1600
         let oceanGeo = SCNPlane(width: oceanSize, height: oceanSize)
-        oceanGeo.widthSegmentCount = segments
-        oceanGeo.heightSegmentCount = segments
+        oceanGeo.widthSegmentCount = 60
+        oceanGeo.heightSegmentCount = 60
 
         let waterMat = SCNMaterial()
         waterMat.lightingModel = .physicallyBased
-        // Deep ocean blue with transparency
-        waterMat.diffuse.contents = NSColor(calibratedRed: 0.05, green: 0.22, blue: 0.42, alpha: 0.88)
-        waterMat.roughness.contents = NSNumber(value: 0.08) // very smooth / reflective
-        waterMat.metalness.contents = NSNumber(value: 0.02)
-        waterMat.transparency = 0.88
-        waterMat.transparencyMode = .dualLayer
+        waterMat.diffuse.contents = NSColor(calibratedRed: 0.04, green: 0.30, blue: 0.55, alpha: 0.90)
+        waterMat.roughness.contents = NSNumber(value: 0.05)
+        waterMat.metalness.contents = NSNumber(value: 0.05)
+        waterMat.transparency = 0.92
         waterMat.isDoubleSided = true
-        waterMat.fresnelExponent = 3.0 // strong Fresnel reflection at grazing angles
 
-        // Animated wave normal perturbation via shader modifier
         let waveShader = """
-        #pragma arguments
-        float time;
-
         #pragma body
-        // Gerstner-style animated wave normals
         float2 uv = _surface.diffuseTexcoord;
         float t = scn_frame.time;
-
-        // Multi-octave wave simulation
-        float wave1 = sin(uv.x * 40.0 + t * 1.5) * cos(uv.y * 30.0 + t * 0.8) * 0.15;
-        float wave2 = sin(uv.x * 80.0 - t * 2.0) * cos(uv.y * 60.0 + t * 1.2) * 0.08;
-        float wave3 = sin(uv.x * 20.0 + t * 0.5) * cos(uv.y * 15.0 - t * 0.3) * 0.20;
-
-        float waveHeight = wave1 + wave2 + wave3;
-
-        // Perturb the normal based on wave derivatives
-        float dWdx = cos(uv.x * 40.0 + t * 1.5) * cos(uv.y * 30.0 + t * 0.8) * 40.0 * 0.15
-                   + cos(uv.x * 80.0 - t * 2.0) * cos(uv.y * 60.0 + t * 1.2) * 80.0 * 0.08;
-        float dWdy = -sin(uv.x * 40.0 + t * 1.5) * sin(uv.y * 30.0 + t * 0.8) * 30.0 * 0.15
-                   - sin(uv.x * 80.0 - t * 2.0) * sin(uv.y * 60.0 + t * 1.2) * 60.0 * 0.08;
-
-        _surface.normal = normalize(float3(-dWdx * 0.3, 1.0, -dWdy * 0.3));
-
-        // Depth-tinted colour: darker at centre (deep), lighter at edges (shallow feel)
-        float depth = length(uv - float2(0.5)) * 2.0;
-        float3 deepColor = float3(0.02, 0.12, 0.32);
-        float3 shallowColor = float3(0.15, 0.55, 0.65);
-        _surface.diffuse.rgb = mix(deepColor, shallowColor, clamp(depth, 0.0, 1.0));
-
-        // Sun specular sparkle enhancement
-        _surface.roughness = 0.05 + waveHeight * 0.15;
+        float w1 = sin(uv.x * 60.0 + t * 1.6) * cos(uv.y * 45.0 + t * 0.9) * 0.12;
+        float w2 = sin(uv.x * 120.0 - t * 2.2) * cos(uv.y * 90.0 + t * 1.4) * 0.06;
+        _surface.normal = normalize(float3(-w1 * 2.0, 1.0, -w2 * 2.0));
+        _surface.roughness = 0.04 + abs(w1 + w2) * 0.1;
         """
-
         waterMat.shaderModifiers = [.surface: waveShader]
         oceanGeo.materials = [waterMat]
 
         oceanNode = SCNNode(geometry: oceanGeo)
-        oceanNode?.position = SCNVector3(0, -3, 0) // sea level
+        oceanNode?.position = SCNVector3(0, -1.0, 0)
         oceanNode?.eulerAngles = SCNVector3(-CGFloat.pi / 2, 0, 0)
-        oceanNode?.castsShadow = false
         rootNode.addChildNode(oceanNode!)
     }
 
-    // MARK: - Volumetric Clouds
+    private func buildLakeLeonida() {
+        let lakeGeo = SCNPlane(width: 140, height: 110)
+        let lakeMat = SCNMaterial()
+        lakeMat.lightingModel = .physicallyBased
+        lakeMat.diffuse.contents = NSColor(calibratedRed: 0.10, green: 0.45, blue: 0.60, alpha: 0.95)
+        lakeMat.roughness.contents = NSNumber(value: 0.04)
+        lakeGeo.materials = [lakeMat]
 
-    private func buildClouds() {
-        // Multiple cloud layers at different altitudes
-        let layers: [(altRange: ClosedRange<CGFloat>, count: Int, sizeRange: ClosedRange<CGFloat>, opacity: CGFloat)] = [
-            (60...120, 24, 20...50, 0.92),    // Low cumulus
-            (130...200, 18, 40...80, 0.85),    // Mid-level
-            (220...320, 12, 60...120, 0.70),   // High cirrus-like
-        ]
-
-        for layer in layers {
-            for _ in 0..<layer.count {
-                let cloud = makeRealisticCloud(
-                    size: CGFloat.random(in: layer.sizeRange),
-                    opacity: layer.opacity
-                )
-                cloud.position = SCNVector3(
-                    CGFloat.random(in: -500...500),
-                    CGFloat.random(in: layer.altRange),
-                    CGFloat.random(in: -500...500)
-                )
-                rootNode.addChildNode(cloud)
-                cloudNodes.append(cloud)
-            }
-        }
+        lakeNode = SCNNode(geometry: lakeGeo)
+        lakeNode?.position = SCNVector3(120, -0.8, -230)
+        lakeNode?.eulerAngles = SCNVector3(-CGFloat.pi / 2, 0, 0)
+        rootNode.addChildNode(lakeNode!)
     }
 
-    private func makeRealisticCloud(size: CGFloat, opacity: CGFloat) -> SCNNode {
-        let cloud = SCNNode()
-        // Build cloud from multiple overlapping spheres with varying sizes (volumetric feel)
-        let puffCount = Int.random(in: 18...35)
-        let baseWidth = size * 0.8
-        let baseHeight = size * 0.25
+    // MARK: - The 6 Leonida Airfields
 
-        for i in 0..<puffCount {
-            let puffRadius = CGFloat.random(in: size * 0.12...size * 0.30)
-            let puff = SCNNode(geometry: SCNSphere(radius: puffRadius))
-            puff.position = SCNVector3(
-                CGFloat.random(in: -baseWidth / 2...baseWidth / 2),
-                CGFloat.random(in: -baseHeight / 2...baseHeight / 2),
-                CGFloat.random(in: -baseWidth / 3...baseWidth / 3)
-            )
-
-            let mat = SCNMaterial()
-            mat.lightingModel = .physicallyBased
-
-            // Cloud colour varies: brighter on top (sun-lit), darker underneath (self-shadow)
-            let heightFraction = (puff.position.y + baseHeight / 2) / baseHeight
-            let brightness = 0.75 + heightFraction * 0.25
-
-            mat.diffuse.contents = NSColor(calibratedWhite: brightness, alpha: 1)
-            mat.roughness.contents = NSNumber(value: 0.95)
-            mat.metalness.contents = NSNumber(value: 0.0)
-            mat.transparency = opacity * CGFloat.random(in: 0.7...1.0)
-            mat.transparencyMode = .dualLayer
-
-            // Edge softening — make edges fade
-            if i > puffCount / 2 {
-                mat.transparency *= 0.7 // outer puffs are more transparent
-            }
-
-            puff.geometry?.materials = [mat]
-            puff.castsShadow = false
-            cloud.addChildNode(puff)
+    private func buildAllAirfields() {
+        for r in runways {
+            buildRunwaySurface(r)
         }
 
-        // Slow drift animation
-        let drift = SCNAction.moveBy(
-            x: CGFloat.random(in: -8...8),
-            y: CGFloat.random(in: -1...1),
-            z: CGFloat.random(in: -8...8),
-            duration: TimeInterval.random(in: 15...30)
-        )
-        cloud.runAction(.repeatForever(.sequence([drift, drift.reversed()])))
-        cloud.castsShadow = false
+        // VCIA: Dual runway cross + control tower + passenger terminal
+        buildVCIASpecialFacilities()
 
-        return cloud
+        // Keys Airfield: Palm trees + tropical shack + windsock
+        buildKeysFacilities()
+
+        // Mount Kalaga: Approach towers + mountain pines
+        buildKalagaFacilities()
+
+        // Port Gellhorn: Cargo containers + cranes
+        buildPortGellhornFacilities()
+
+        // Ambrosia: Farm barns + silos + windsock
+        buildAmbrosiaFacilities()
+
+        // Everglades: Swamp watchtower + wooden docks
+        buildEvergladesFacilities()
     }
 
-    // MARK: - Environment (trees, buildings, details)
+    private func buildRunwaySurface(_ r: RunwayZone) {
+        let node = SCNNode()
+        node.position = r.position
+        let rad = r.headingDeg * Double.pi / 180.0
+        node.eulerAngles = SCNVector3(0, -rad, 0)
 
-    private func buildEnvironment() {
-        // Islands with detailed vegetation
-        let islandPositions: [(Float, Float)] = [(-150, -200), (200, -150), (-180, 200), (180, 180), (0, -300)]
-        for (ix, iz) in islandPositions {
-            buildIsland(at: SCNVector3(CGFloat(ix), CGFloat(sampleHeight(worldX: CGFloat(ix), worldZ: CGFloat(iz))), CGFloat(iz)))
+        // Asphalt runway plane
+        let runwayGeo = SCNPlane(width: r.length, height: r.width)
+        let mat = SCNMaterial()
+        mat.lightingModel = .physicallyBased
+        mat.diffuse.contents = NSColor(calibratedRed: 0.16, green: 0.17, blue: 0.18, alpha: 1)
+        mat.roughness.contents = NSNumber(value: 0.7)
+        mat.metalness.contents = NSNumber(value: 0.0)
+        runwayGeo.materials = [mat]
+
+        let surface = SCNNode(geometry: runwayGeo)
+        surface.eulerAngles = SCNVector3(-CGFloat.pi / 2, 0, 0)
+        surface.position = SCNVector3(0, 0.05, 0)
+        node.addChildNode(surface)
+
+        // Dashed Centerline
+        let dashes = Int(r.length / 14)
+        for i in 0..<dashes {
+            let dash = SCNNode(geometry: SCNPlane(width: 7, height: 0.4))
+            dash.position = SCNVector3(CGFloat(i) * 14 - r.length / 2 + 7, 0.07, 0)
+            dash.eulerAngles = SCNVector3(-CGFloat.pi / 2, 0, 0)
+            dash.geometry?.firstMaterial?.lightingModel = .physicallyBased
+            dash.geometry?.firstMaterial?.diffuse.contents = NSColor.white
+            node.addChildNode(dash)
         }
 
-        // Scattered vegetation across green areas
-        for _ in 0..<60 {
-            let x = CGFloat.random(in: -350...350)
-            let z = CGFloat.random(in: -350...350)
-            let h = sampleHeight(worldX: x, worldZ: z)
-            if h > 0 && h < 20 { // Only on grass/forest biome
-                let tree = makeRealisticTree()
-                tree.position = SCNVector3(x, h, z)
-                rootNode.addChildNode(tree)
+        // Runway Edge Lights (white running alongside runway)
+        for side in [-1, 1] as [CGFloat] {
+            for x in stride(from: -r.length / 2, through: r.length / 2, by: 20) {
+                let light = SCNNode(geometry: SCNSphere(radius: 0.22))
+                light.position = SCNVector3(x, 0.15, side * (r.width / 2 + 0.6))
+                let lMat = SCNMaterial()
+                lMat.lightingModel = .constant
+                lMat.diffuse.contents = NSColor.yellow
+                lMat.emission.contents = NSColor(calibratedRed: 1.0, green: 0.85, blue: 0.4, alpha: 1)
+                light.geometry?.materials = [lMat]
+                node.addChildNode(light)
             }
         }
 
-        // Simple buildings near runway
-        for i in 0..<4 {
-            let building = makeBuilding()
-            building.position = SCNVector3(CGFloat.random(in: -80...80), 0.5, CGFloat(i * 20) - 40 + (i % 2 == 0 ? -15 : 15))
-            rootNode.addChildNode(building)
+        // Threshold Green Lights
+        for end in [-r.length / 2, r.length / 2] {
+            for side in stride(from: -r.width / 2, through: r.width / 2, by: 2) {
+                let tLight = SCNNode(geometry: SCNSphere(radius: 0.2))
+                tLight.position = SCNVector3(end, 0.15, side)
+                let tlMat = SCNMaterial()
+                tlMat.lightingModel = .constant
+                tlMat.diffuse.contents = NSColor.green
+                tlMat.emission.contents = NSColor(calibratedRed: 0.2, green: 1.0, blue: 0.4, alpha: 1)
+                tLight.geometry?.materials = [tlMat]
+                node.addChildNode(tLight)
+            }
+        }
+
+        rootNode.addChildNode(node)
+    }
+
+    private func buildVCIASpecialFacilities() {
+        let vciaPos = SCNVector3(220, 1.2, 120)
+
+        // Cross Runway 14/32 (heading 45 deg)
+        let crossRunway = RunwayZone(id: "vcia_cross", code: "VCIA", name: "VCIA Cross", zone: "VICE CITY", position: SCNVector3(vciaPos.x, vciaPos.y, vciaPos.z), length: 190, width: 12, headingDeg: 45, elevation: 1.2)
+        buildRunwaySurface(crossRunway)
+
+        // Control Tower
+        let tower = makeControlTower(height: 26)
+        tower.position = SCNVector3(vciaPos.x - 30, vciaPos.y, vciaPos.z - 35)
+        rootNode.addChildNode(tower)
+
+        // Airport Terminal Building
+        let terminal = SCNNode(geometry: SCNBox(width: 70, height: 12, length: 28, chamferRadius: 1))
+        terminal.position = SCNVector3(vciaPos.x + 35, vciaPos.y + 6, vciaPos.z - 45)
+        let tMat = SCNMaterial()
+        tMat.lightingModel = .physicallyBased
+        tMat.diffuse.contents = NSColor(calibratedRed: 0.85, green: 0.88, blue: 0.92, alpha: 1)
+        tMat.roughness.contents = NSNumber(value: 0.3)
+        terminal.geometry?.materials = [tMat]
+        rootNode.addChildNode(terminal)
+
+        // Hangars
+        for i in 0..<2 {
+            let hangar = makeHangar(width: 25, height: 10, length: 30)
+            hangar.position = SCNVector3(vciaPos.x - 80 + CGFloat(i * 35), vciaPos.y, vciaPos.z + 40)
+            rootNode.addChildNode(hangar)
         }
     }
 
-    private func buildIsland(at position: SCNVector3) {
-        // Palm trees on island
-        for _ in 0..<6 {
+    private func buildKeysFacilities() {
+        let p = SCNVector3(80, 1.2, 420)
+        let shack = makeBuilding(w: 12, h: 5, l: 8, color: NSColor(calibratedRed: 0.9, green: 0.7, blue: 0.5, alpha: 1))
+        shack.position = SCNVector3(p.x - 15, p.y + 2.5, p.z - 20)
+        rootNode.addChildNode(shack)
+
+        for _ in 0..<10 {
             let palm = makeRealisticPalmTree()
-            palm.position = SCNVector3(
-                position.x + CGFloat.random(in: -25...25),
-                position.y + 2,
-                position.z + CGFloat.random(in: -25...25)
-            )
+            palm.position = SCNVector3(p.x + CGFloat.random(in: -40...40), p.y, p.z + CGFloat.random(in: -30...30))
             rootNode.addChildNode(palm)
         }
     }
 
+    private func buildKalagaFacilities() {
+        let p = SCNVector3(-80, 48.2, -360)
+        let tower = makeControlTower(height: 14)
+        tower.position = SCNVector3(p.x - 18, p.y, p.z)
+        rootNode.addChildNode(tower)
+
+        for _ in 0..<18 {
+            let tree = makeRealisticTree()
+            tree.position = SCNVector3(p.x + CGFloat.random(in: -50...50), p.y, p.z + CGFloat.random(in: -40...40))
+            rootNode.addChildNode(tree)
+        }
+    }
+
+    private func buildPortGellhornFacilities() {
+        let p = SCNVector3(-320, 1.2, -60)
+        // Shipping container stacks
+        let colors: [NSColor] = [.systemRed, .systemBlue, .systemYellow, .systemGreen, .systemOrange]
+        for i in 0..<8 {
+            let box = SCNNode(geometry: SCNBox(width: 8, height: 4, length: 18, chamferRadius: 0.1))
+            box.position = SCNVector3(p.x - 30 + CGFloat(i % 4 * 10), p.y + 2 + CGFloat(i / 4 * 4), p.z + 30)
+            let bMat = SCNMaterial()
+            bMat.lightingModel = .physicallyBased
+            bMat.diffuse.contents = colors[i % colors.count]
+            bMat.roughness.contents = NSNumber(value: 0.6)
+            box.geometry?.materials = [bMat]
+            rootNode.addChildNode(box)
+        }
+    }
+
+    private func buildAmbrosiaFacilities() {
+        let p = SCNVector3(40, 6.2, -100)
+        // Red Barn
+        let barn = makeBuilding(w: 16, h: 9, l: 22, color: NSColor(calibratedRed: 0.75, green: 0.2, blue: 0.15, alpha: 1))
+        barn.position = SCNVector3(p.x - 22, p.y + 4.5, p.z - 15)
+        rootNode.addChildNode(barn)
+
+        // Silo
+        let silo = SCNNode(geometry: SCNCylinder(radius: 3.5, height: 16))
+        silo.position = SCNVector3(p.x - 34, p.y + 8, p.z - 15)
+        let sMat = SCNMaterial()
+        sMat.lightingModel = .physicallyBased
+        sMat.diffuse.contents = NSColor(calibratedRed: 0.8, green: 0.82, blue: 0.85, alpha: 1)
+        sMat.metalness.contents = NSNumber(value: 0.8)
+        sMat.roughness.contents = NSNumber(value: 0.35)
+        silo.geometry?.materials = [sMat]
+        rootNode.addChildNode(silo)
+    }
+
+    private func buildEvergladesFacilities() {
+        let p = SCNVector3(-160, 1.2, 200)
+        let tower = makeControlTower(height: 12)
+        tower.position = SCNVector3(p.x - 16, p.y, p.z - 15)
+        rootNode.addChildNode(tower)
+
+        for _ in 0..<14 {
+            let tree = makeRealisticTree()
+            tree.position = SCNVector3(p.x + CGFloat.random(in: -40...40), p.y, p.z + CGFloat.random(in: -40...40))
+            rootNode.addChildNode(tree)
+        }
+    }
+
+    // MARK: - Vice City Skyline & Landmarks
+
+    private func buildViceCitySkyline() {
+        let cityX: CGFloat = 190
+        let cityZ: CGFloat = 40
+
+        // Cluster of skyscrapers with glass and concrete
+        for i in 0..<22 {
+            let h = CGFloat.random(in: 25...75)
+            let w = CGFloat.random(in: 12...22)
+            let l = CGFloat.random(in: 12...22)
+            let ox = cityX + CGFloat(i % 5 * 28) - 60
+            let oz = cityZ + CGFloat(i / 5 * 28) - 50
+
+            let b = SCNNode(geometry: SCNBox(width: w, height: h, length: l, chamferRadius: 0.5))
+            b.position = SCNVector3(ox, 1.5 + h / 2, oz)
+
+            let mat = SCNMaterial()
+            mat.lightingModel = .physicallyBased
+            if i % 3 == 0 {
+                // Glass tower
+                mat.diffuse.contents = NSColor(calibratedRed: 0.2, green: 0.45, blue: 0.65, alpha: 1)
+                mat.roughness.contents = NSNumber(value: 0.15)
+                mat.metalness.contents = NSNumber(value: 0.7)
+            } else {
+                // Modern concrete/steel tower
+                mat.diffuse.contents = NSColor(calibratedRed: 0.80, green: 0.82, blue: 0.85, alpha: 1)
+                mat.roughness.contents = NSNumber(value: 0.45)
+            }
+            b.geometry?.materials = [mat]
+            b.castsShadow = true
+            rootNode.addChildNode(b)
+
+            // Rooftop beacon on tall skyscrapers
+            if h > 50 {
+                let rLight = SCNNode(geometry: SCNSphere(radius: 0.5))
+                rLight.position = SCNVector3(ox, 1.5 + h + 0.6, oz)
+                let rlMat = SCNMaterial()
+                rlMat.lightingModel = .constant
+                rlMat.diffuse.contents = NSColor.red
+                rlMat.emission.contents = NSColor.red
+                rLight.geometry?.materials = [rlMat]
+                rootNode.addChildNode(rLight)
+                beaconNodes.append(rLight)
+            }
+        }
+    }
+
+    private func buildLeonidaLandmarks() {
+        // Overseas Highway bridge segments in Keys (z: 320 to 520)
+        for i in 0..<8 {
+            let bridge = SCNNode(geometry: SCNBox(width: 8, height: 1.5, length: 30, chamferRadius: 0.2))
+            bridge.position = SCNVector3(70 - CGFloat(i * 12), 1.0, 340 + CGFloat(i * 26))
+            let bMat = SCNMaterial()
+            bMat.lightingModel = .physicallyBased
+            bMat.diffuse.contents = NSColor(calibratedRed: 0.7, green: 0.72, blue: 0.75, alpha: 1)
+            bridge.geometry?.materials = [bMat]
+            rootNode.addChildNode(bridge)
+        }
+    }
+
+    private func makeControlTower(height: CGFloat) -> SCNNode {
+        let node = SCNNode()
+        let shaft = SCNNode(geometry: SCNCylinder(radius: 2.2, height: height))
+        shaft.position = SCNVector3(0, height / 2, 0)
+        let sMat = SCNMaterial()
+        sMat.lightingModel = .physicallyBased
+        sMat.diffuse.contents = NSColor(calibratedRed: 0.82, green: 0.85, blue: 0.88, alpha: 1)
+        shaft.geometry?.materials = [sMat]
+        node.addChildNode(shaft)
+
+        let cab = SCNNode(geometry: SCNCylinder(radius: 4.2, height: 3.5))
+        cab.position = SCNVector3(0, height + 1.75, 0)
+        let cMat = SCNMaterial()
+        cMat.lightingModel = .physicallyBased
+        cMat.diffuse.contents = NSColor(calibratedRed: 0.15, green: 0.45, blue: 0.65, alpha: 0.9)
+        cab.geometry?.materials = [cMat]
+        node.addChildNode(cab)
+
+        let beacon = SCNNode(geometry: SCNSphere(radius: 0.6))
+        beacon.position = SCNVector3(0, height + 4.0, 0)
+        let bMat = SCNMaterial()
+        bMat.lightingModel = .constant
+        bMat.diffuse.contents = NSColor.white
+        bMat.emission.contents = NSColor.white
+        beacon.geometry?.materials = [bMat]
+        node.addChildNode(beacon)
+        beaconNodes.append(beacon)
+
+        return node
+    }
+
+    private func makeHangar(width: CGFloat, height: CGFloat, length: CGFloat) -> SCNNode {
+        let hangar = SCNNode(geometry: SCNBox(width: width, height: height, length: length, chamferRadius: 1))
+        hangar.position = SCNVector3(0, height / 2, 0)
+        let hMat = SCNMaterial()
+        hMat.lightingModel = .physicallyBased
+        hMat.diffuse.contents = NSColor(calibratedRed: 0.75, green: 0.78, blue: 0.82, alpha: 1)
+        hMat.metalness.contents = NSNumber(value: 0.5)
+        hangar.geometry?.materials = [hMat]
+        return hangar
+    }
+
+    private func makeBuilding(w: CGFloat = 10, h: CGFloat = 8, l: CGFloat = 10, color: NSColor? = nil) -> SCNNode {
+        let b = SCNNode(geometry: SCNBox(width: w, height: h, length: l, chamferRadius: 0.2))
+        let mat = SCNMaterial()
+        mat.lightingModel = .physicallyBased
+        mat.diffuse.contents = color ?? NSColor(calibratedRed: 0.8, green: 0.8, blue: 0.85, alpha: 1)
+        b.geometry?.materials = [mat]
+        return b
+    }
+
     private func makeRealisticTree() -> SCNNode {
         let tree = SCNNode()
-
-        // Trunk with PBR bark
-        let trunkHeight: CGFloat = CGFloat.random(in: 3...7)
-        let trunk = SCNNode(geometry: SCNCylinder(radius: CGFloat.random(in: 0.3...0.6), height: trunkHeight))
-        trunk.position = SCNVector3(0, trunkHeight / 2, 0)
-        let barkMat = SCNMaterial()
-        barkMat.lightingModel = .physicallyBased
-        barkMat.diffuse.contents = NSColor(calibratedRed: 0.35, green: 0.22, blue: 0.12, alpha: 1)
-        barkMat.roughness.contents = NSNumber(value: 0.9)
-        barkMat.metalness.contents = NSNumber(value: 0.0)
-        trunk.geometry?.materials = [barkMat]
-        trunk.castsShadow = true
+        let h = CGFloat.random(in: 4...8)
+        let trunk = SCNNode(geometry: SCNCylinder(radius: 0.4, height: h))
+        trunk.position = SCNVector3(0, h / 2, 0)
+        trunk.geometry?.firstMaterial?.diffuse.contents = NSColor(calibratedRed: 0.35, green: 0.22, blue: 0.12, alpha: 1)
         tree.addChildNode(trunk)
 
-        // Foliage (cluster of spheres)
-        let foliageColors: [NSColor] = [
-            NSColor(calibratedRed: 0.15, green: 0.50, blue: 0.18, alpha: 1),
-            NSColor(calibratedRed: 0.20, green: 0.58, blue: 0.22, alpha: 1),
-            NSColor(calibratedRed: 0.12, green: 0.42, blue: 0.15, alpha: 1),
-        ]
-        for _ in 0..<Int.random(in: 3...5) {
-            let leaf = SCNNode(geometry: SCNSphere(radius: CGFloat.random(in: 1.2...2.5)))
-            leaf.position = SCNVector3(
-                CGFloat.random(in: -1.5...1.5),
-                trunkHeight + CGFloat.random(in: 0...2),
-                CGFloat.random(in: -1.5...1.5)
-            )
-            let leafMat = SCNMaterial()
-            leafMat.lightingModel = .physicallyBased
-            leafMat.diffuse.contents = foliageColors.randomElement()!
-            leafMat.roughness.contents = NSNumber(value: 0.85)
-            leafMat.metalness.contents = NSNumber(value: 0.0)
-            leaf.geometry?.materials = [leafMat]
-            leaf.castsShadow = true
-            tree.addChildNode(leaf)
-        }
-
+        let leaf = SCNNode(geometry: SCNCone(topRadius: 0, bottomRadius: 2.8, height: h * 1.2))
+        leaf.position = SCNVector3(0, h + h * 0.4, 0)
+        leaf.geometry?.firstMaterial?.diffuse.contents = NSColor(calibratedRed: 0.12, green: 0.38, blue: 0.16, alpha: 1)
+        tree.addChildNode(leaf)
         return tree
     }
 
     private func makeRealisticPalmTree() -> SCNNode {
         let palm = SCNNode()
-
-        // Curved trunk
-        let trunkH: CGFloat = CGFloat.random(in: 6...10)
-        let trunk = SCNNode(geometry: SCNCylinder(radius: 0.5, height: trunkH))
-        trunk.position = SCNVector3(0, trunkH / 2, 0)
-        let trunkMat = SCNMaterial()
-        trunkMat.lightingModel = .physicallyBased
-        trunkMat.diffuse.contents = NSColor(calibratedRed: 0.50, green: 0.35, blue: 0.20, alpha: 1)
-        trunkMat.roughness.contents = NSNumber(value: 0.92)
-        trunk.geometry?.materials = [trunkMat]
-        trunk.castsShadow = true
+        let h: CGFloat = 9
+        let trunk = SCNNode(geometry: SCNCylinder(radius: 0.35, height: h))
+        trunk.position = SCNVector3(0, h / 2, 0)
+        trunk.geometry?.firstMaterial?.diffuse.contents = NSColor(calibratedRed: 0.5, green: 0.35, blue: 0.2, alpha: 1)
         palm.addChildNode(trunk)
 
-        // Palm fronds (elongated spheres)
         for _ in 0..<5 {
-            let frond = SCNNode(geometry: SCNSphere(radius: 2.0))
-            frond.scale = SCNVector3(1.0, 0.3, 2.5) // flatten + elongate
-            frond.position = SCNVector3(
-                CGFloat.random(in: -2...2),
-                trunkH + CGFloat.random(in: -0.5...0.5),
-                CGFloat.random(in: -2...2)
-            )
-            frond.eulerAngles = SCNVector3(
-                CGFloat.random(in: -0.5...0.5),
-                CGFloat.random(in: 0...CGFloat.pi * 2),
-                CGFloat.random(in: -0.3...0.3)
-            )
-            let frondMat = SCNMaterial()
-            frondMat.lightingModel = .physicallyBased
-            frondMat.diffuse.contents = NSColor(calibratedRed: 0.18, green: 0.55, blue: 0.22, alpha: 1)
-            frondMat.roughness.contents = NSNumber(value: 0.8)
-            frond.geometry?.materials = [frondMat]
-            frond.castsShadow = true
+            let frond = SCNNode(geometry: SCNSphere(radius: 2.2))
+            frond.scale = SCNVector3(1.2, 0.25, 2.8)
+            frond.position = SCNVector3(CGFloat.random(in: -1...1), h, CGFloat.random(in: -1...1))
+            frond.eulerAngles = SCNVector3(0.2, CGFloat.random(in: 0...CGFloat.pi * 2), 0.2)
+            frond.geometry?.firstMaterial?.diffuse.contents = NSColor(calibratedRed: 0.15, green: 0.55, blue: 0.2, alpha: 1)
             palm.addChildNode(frond)
         }
-
-        // Coconut cluster
-        for _ in 0..<3 {
-            let coconut = SCNNode(geometry: SCNSphere(radius: 0.3))
-            coconut.position = SCNVector3(CGFloat.random(in: -0.5...0.5), trunkH - 0.3, CGFloat.random(in: -0.5...0.5))
-            let cocoMat = SCNMaterial()
-            cocoMat.lightingModel = .physicallyBased
-            cocoMat.diffuse.contents = NSColor(calibratedRed: 0.45, green: 0.30, blue: 0.15, alpha: 1)
-            cocoMat.roughness.contents = NSNumber(value: 0.7)
-            coconut.geometry?.materials = [cocoMat]
-            palm.addChildNode(coconut)
-        }
-
         return palm
-    }
-
-    private func makeBuilding() -> SCNNode {
-        let building = SCNNode()
-        let w = CGFloat.random(in: 4...8)
-        let h = CGFloat.random(in: 3...6)
-        let d = CGFloat.random(in: 4...8)
-
-        let box = SCNNode(geometry: SCNBox(width: w, height: h, length: d, chamferRadius: 0.1))
-        box.position = SCNVector3(0, h / 2, 0)
-        let wallMat = SCNMaterial()
-        wallMat.lightingModel = .physicallyBased
-        wallMat.diffuse.contents = NSColor(calibratedRed: CGFloat.random(in: 0.7...0.9),
-                                            green: CGFloat.random(in: 0.7...0.85),
-                                            blue: CGFloat.random(in: 0.65...0.8), alpha: 1)
-        wallMat.roughness.contents = NSNumber(value: 0.7)
-        box.geometry?.materials = [wallMat]
-        box.castsShadow = true
-        building.addChildNode(box)
-
-        // Roof
-        let roof = SCNNode(geometry: SCNBox(width: w + 0.5, height: 0.3, length: d + 0.5, chamferRadius: 0.05))
-        roof.position = SCNVector3(0, h + 0.15, 0)
-        let roofMat = SCNMaterial()
-        roofMat.lightingModel = .physicallyBased
-        roofMat.diffuse.contents = NSColor(calibratedRed: 0.55, green: 0.25, blue: 0.18, alpha: 1)
-        roofMat.roughness.contents = NSNumber(value: 0.6)
-        roof.geometry?.materials = [roofMat]
-        roof.castsShadow = true
-        building.addChildNode(roof)
-
-        return building
     }
 
     private func makeTargetBalloon() -> SCNNode {
         let n = SCNNode()
-        let body = SCNNode(geometry: SCNSphere(radius: 1.6))
-        body.position = SCNVector3(0, 2, 0)
-        let balloonMat = SCNMaterial()
-        balloonMat.lightingModel = .physicallyBased
-        balloonMat.diffuse.contents = NSColor(calibratedRed: 0.9, green: 0.25, blue: 0.2, alpha: 1)
-        balloonMat.roughness.contents = NSNumber(value: 0.3) // shiny rubber
-        balloonMat.metalness.contents = NSNumber(value: 0.05)
-        body.geometry?.materials = [balloonMat]
-        body.castsShadow = true
+        let body = SCNNode(geometry: SCNSphere(radius: 2.0))
+        let mat = SCNMaterial()
+        mat.lightingModel = .physicallyBased
+        mat.diffuse.contents = NSColor(calibratedRed: 0.95, green: 0.2, blue: 0.25, alpha: 1)
+        mat.roughness.contents = NSNumber(value: 0.3)
+        body.geometry?.materials = [mat]
         n.addChildNode(body)
-
-        let string = SCNNode(geometry: SCNCylinder(radius: 0.06, height: 5))
-        string.position = SCNVector3(0, -3.5, 0)
-        let stringMat = SCNMaterial()
-        stringMat.lightingModel = .physicallyBased
-        stringMat.diffuse.contents = NSColor.gray
-        stringMat.roughness.contents = NSNumber(value: 0.8)
-        string.geometry?.materials = [stringMat]
-        n.addChildNode(string)
-
-        // Rise animation
-        let up = SCNAction.moveBy(x: 0, y: 1, z: 0, duration: 3.0)
-        n.runAction(.repeatForever(.sequence([up, up.reversed()])))
-
         return n
     }
 
-    // MARK: - Per-frame realistic flight physics
+    private func buildClouds() {
+        for _ in 0..<20 {
+            let c = SCNNode()
+            for _ in 0..<5 {
+                let p = SCNNode(geometry: SCNSphere(radius: CGFloat.random(in: 18...35)))
+                p.position = SCNVector3(CGFloat.random(in: -30...30), CGFloat.random(in: -5...5), CGFloat.random(in: -30...30))
+                let m = SCNMaterial()
+                m.lightingModel = .physicallyBased
+                m.diffuse.contents = NSColor.white
+                m.transparency = 0.85
+                p.geometry?.materials = [m]
+                c.addChildNode(p)
+            }
+            c.position = SCNVector3(CGFloat.random(in: -600...600), CGFloat.random(in: 120...240), CGFloat.random(in: -600...600))
+            rootNode.addChildNode(c)
+            cloudNodes.append(c)
+        }
+    }
+
+    // MARK: - GTA V Flight Controls & Physics Loop
 
     func renderer(_ renderer: SCNSceneRenderer, updateAtTime t: TimeInterval) {
         let dt: CGFloat = 1.0 / 60.0
         time = t
 
-        // --- Input-derived controls ---
-        let boosting = boostHeld
-        let steerX = CGFloat(mouseSteer.dx) * CGFloat(sensitivity) * CGFloat(plane.turnSpeed)  // roll/yaw input
-        let steerY = CGFloat(-mouseSteer.dy) * CGFloat(sensitivity)                          // pitch input
-
-        // --- Aerodynamic flight physics ---
-
-        // 1. Angle of attack from pitch + sideslip (AoA = pitch - sideslip offset)
-        angleOfAttack = steerY * 0.8 - sideSlip * 0.5
-
-        // 2. Lift generation (parabolic polar curve, stall at high AoA)
-        let maxLift = 25.0
-        let liftCurve: CGFloat = -0.15 * angleOfAttack * angleOfAttack + 0.8 * angleOfAttack
-        let lift = maxLift * Swift.min(1, Swift.max(-1, liftCurve)) * (airspeed / 30.0)   // lift approx ∝ v²
-
-        // 3. Drag (parabolic — scales with speed²)
-        let dragCoeff = 0.02 * (airspeed / 30.0)
-        let dragForce = -airspeed * dragCoeff * airspeed
-
-        // 4. Thrust / engine (boost adds power)
-        let baseThrust = CGFloat(plane.topSpeed) * 0.15
-        let thrust = boosting ? baseThrust * 1.8 : baseThrust
-
-        // 5. Weight / gravity (downward force)
-        let gravity = 25.0 * (1.0 + 0.01 * (airspeed / 30.0))
-
-        // 6. Net vertical motion: lift opposes gravity, thrust has vertical component from pitch
-        let netLift = lift - gravity
-        verticalSpeed += (netLift / 10.0) * dt   // vertical acceleration
-
-        // 7. Horizontal speed: thrust vs drag, clamped per plane
-        let speedAccel = (thrust + dragForce) / 10.0
-        airspeed += speedAccel * dt
-        // clamp airspeed: won't drop below stall, won't exceed never-exceed in boost
-        airspeed = max(stallSpeed, min(60.0, airspeed))
-
-        // 8. Heading change from roll (banked turn) + rudder (sideslip coordination)
-        //    real planes turn via bank: turn rate ∝ sin(bank) * airspeed
-        let turnFromBank = Double(sin(bank)) * Double(airspeed) * 0.008
-        let turnFromRudder = Double(steerX) * Double(plane.turnSpeed) * 0.4
-        let turnRate = turnFromBank + turnFromRudder
-        heading -= CGFloat(turnRate) * dt
-
-        // 9. Sideslip from rudder input (coordination ball idea)
-        sideSlip = steerX * 0.3  // simple model: rudder cancels sideslip over time
-        sideSlip *= 0.9 * dt     // damping
-
-        // 10. Bank from aileron (mouse left/right)
-        bank = steerX * 0.5   // radians, clamped by physics below
-        bank = max(-CGFloat.pi / 4, min(CGFloat.pi / 4, bank))  // max 45° bank
-
-        // 11. Ground collision with height terrain + ground effect
-        let groundHeight = sampleHeight(worldX: CGFloat(planeNode.position.x), worldZ: CGFloat(planeNode.position.z))
-        let stepY = verticalSpeed * dt
-
-        // ground effect cushion when very low (reduces sink rate near ground)
-        let cushion: CGFloat = max(0, 10 - altitude) * 0.1
-
-        altitude = max(groundHeight, altitude + stepY - cushion)
-        verticalSpeed = altitude - groundHeight // keep consistent
-
-        // If we sink too low, auto-climb (soft landing assist for kids)
-        if altitude < groundHeight + 2 {
-            verticalSpeed = max(verticalSpeed, -0.5) // don't slam down
-            altitude = groundHeight + 2
+        // Beacon blink
+        let beaconOn = Int(time * 2.0) % 2 == 0
+        for b in beaconNodes {
+            b.isHidden = !beaconOn
         }
 
-        // Climb/descent limits
-        verticalSpeed = max(-8, min(8, verticalSpeed))
+        // --- 1. Combine inputs: GTA V Keyboard + Kid Mouse ---
+        let mousePitch = CGFloat(-mouseSteer.dy) * CGFloat(sensitivity)
+        let mouseRoll = CGFloat(mouseSteer.dx) * CGFloat(sensitivity) * CGFloat(plane.turnSpeed)
 
-        // 12. Position update using airspeed, heading, bank
-        let stepX = sin(heading) * cos(bank) * airspeed * dt
-        let stepZ = -cos(heading) * cos(bank) * airspeed * dt
-        planeNode.position.x += stepX
-        planeNode.position.y += stepY
-        planeNode.position.z += stepZ
+        let pitchTotal = (mousePitch * 0.7 + pitchInput * 0.9).clamped(to: -1...1)
+        let rollTotal = (mouseRoll * 0.7 + rollInput * 0.9).clamped(to: -1...1)
+        let rudderTotal = (rudderInput * 0.8 + (mouseRoll * 0.3)).clamped(to: -1...1)
 
-        // World bounds wrap (infinite flight area)
-        if planeNode.position.x > 400 { planeNode.position.x -= 800 }
-        if planeNode.position.x < -400 { planeNode.position.x += 800 }
-        if planeNode.position.z > 400 { planeNode.position.z -= 800 }
-        if planeNode.position.z < -400 { planeNode.position.z += 800 }
+        // Throttle management
+        if throttleChange != 0 {
+            throttlePct = Int((CGFloat(throttlePct) + throttleChange * 35.0 * dt).clamped(to: 0...100))
+        }
+        let effectiveThrottle = boostHeld ? 100 : throttlePct
 
-        // 13. Propeller + boost effects
-        PlaneFactory.spinPropeller(planeNode, delta: dt * (boosting ? 2.5 : 1.5))
-        PlaneFactory.setBoost(planeNode, on: boosting)
+        // --- 2. Check Runway Proximity & Surface Elevation ---
+        let px = planeNode.position.x
+        let pz = planeNode.position.z
+        var groundElev = sampleHeight(worldX: px, worldZ: pz)
+        var currentlyOnRunway = false
+        var activeRunwayName = ""
 
-        // 14. Cloud interaction (enter cloud = slight speed reduction + visibility hint)
-        for c in cloudNodes where !c.isHidden {
-            let dist = planeNode.position.distance(to: c.position)
-            if dist < 50 {
-                airspeed = max(stallSpeed, airspeed - 0.3 * dt)
+        for r in runways {
+            let dx = abs(px - r.position.x)
+            let dz = abs(pz - r.position.z)
+            if dx < r.length / 2 + 15 && dz < r.width / 2 + 8 {
+                groundElev = r.elevation
+                currentlyOnRunway = true
+                activeRunwayName = r.name
+                break
             }
         }
 
-        // 15. Target practice: hit balloons
+        // Ground contact detection
+        let wheelContactHeight = groundElev + 0.35
+        isGrounded = planeNode.position.y <= wheelContactHeight + 0.15
+
+        // --- 3. Ground Taxiing vs Flight Aerodynamics ---
+        if isGrounded {
+            // Wheels on ground
+            planeNode.position.y = wheelContactHeight
+            verticalSpeed = 0
+            angleOfAttack = 0
+            bank = 0
+
+            if wasAirborne {
+                wasAirborne = false
+                SoundManager.shared.touchdown()
+                if currentlyOnRunway {
+                    onTouchdown?("🛬 TOUCHDOWN AT \(activeRunwayName.uppercased())!")
+                }
+            }
+
+            // Taxiing steering: rudder steers nosewheel directly
+            heading -= rudderTotal * 1.8 * (airspeed / 20.0) * dt
+
+            // Ground acceleration / deceleration
+            let targetTaxiSpeed = CGFloat(effectiveThrottle) * 0.35
+            if airspeed < targetTaxiSpeed {
+                airspeed += 15.0 * dt
+            } else if airspeed > targetTaxiSpeed {
+                let brakeCoeff: CGFloat = (throttleChange < 0 || effectiveThrottle == 0) ? 22.0 : 8.0
+                airspeed = Swift.max(0, airspeed - brakeCoeff * dt)
+            }
+
+            // Takeoff rotation: speed >= stallSpeed and pilot pulls back (pitch > 0.25)
+            if airspeed >= stallSpeed && pitchTotal > 0.25 {
+                isGrounded = false
+                verticalSpeed = 3.5 * pitchTotal
+                planeNode.position.y += verticalSpeed * dt
+                wasAirborne = true
+            }
+        } else {
+            // Airborne flight aerodynamics
+            wasAirborne = true
+
+            // Angle of attack
+            angleOfAttack = pitchTotal * 0.8 - sideSlip * 0.4
+
+            // Lift polar curve (lift approx airspeed^2)
+            let maxLift: CGFloat = 26.0
+            let liftCurve: CGFloat = -0.15 * angleOfAttack * angleOfAttack + 0.8 * angleOfAttack
+            let lift = maxLift * Swift.min(1.2, Swift.max(-1.0, liftCurve)) * (airspeed / 28.0)
+
+            // Drag
+            let dragCoeff = 0.022 * (airspeed / 28.0) + (gearDown ? 0.008 : 0.0)
+            let drag = -airspeed * dragCoeff * airspeed
+
+            // Engine Thrust
+            let baseThrust = CGFloat(plane.topSpeed) * 0.16 * (CGFloat(effectiveThrottle) / 60.0)
+            let thrust = boostHeld ? baseThrust * 1.8 : baseThrust
+
+            // Gravity
+            let gravity: CGFloat = 24.5
+
+            // Vertical motion
+            let netLift = lift - gravity
+            verticalSpeed += (netLift / 9.5) * dt
+            verticalSpeed = Swift.max(-12, Swift.min(12, verticalSpeed))
+
+            // Forward airspeed
+            let speedAccel = (thrust + drag) / 10.0
+            airspeed += speedAccel * dt
+            airspeed = Swift.max(stallSpeed * 0.7, Swift.min(CGFloat(plane.topSpeed) * 1.6, airspeed))
+
+            // Banked turns & Yaw
+            let turnFromBank = Double(sin(bank)) * Double(airspeed) * 0.009
+            let turnFromRudder = Double(rudderTotal) * Double(plane.turnSpeed) * 0.45
+            heading -= CGFloat(turnFromBank + turnFromRudder) * dt
+
+            // Bank angle smoothly tracks roll input
+            let targetBank = rollTotal * (CGFloat.pi / 3.2) // up to ~56 deg bank
+            bank += (targetBank - bank) * 6.0 * dt
+
+            // Sideslip damping
+            sideSlip = rudderTotal * 0.3
+            sideSlip *= 0.9 * dt
+
+            // Vertical descent onto ground
+            planeNode.position.y += verticalSpeed * dt
+
+            if planeNode.position.y <= wheelContactHeight {
+                planeNode.position.y = wheelContactHeight
+                isGrounded = true
+            }
+        }
+
+        // --- 4. Forward Flight Position Update ---
+        let forwardStep = airspeed * dt
+        planeNode.position.x += sin(heading) * cos(bank) * forwardStep
+        planeNode.position.z += -cos(heading) * cos(bank) * forwardStep
+
+        // Smooth visual attitude rotation
+        let pitchRot = isGrounded ? 0 : angleOfAttack * 0.6
+        planeNode.eulerAngles = SCNVector3(pitchRot, heading, -bank)
+
+        // Propeller spin
+        PlaneFactory.spinPropeller(planeNode, delta: dt * (effectiveThrottle > 70 ? 2.8 : 1.6))
+        PlaneFactory.setBoost(planeNode, on: boostHeld)
+
+        // World wrap bounds (+/- 700)
+        let bound: CGFloat = terrainWorldSize / 2
+        if planeNode.position.x > bound { planeNode.position.x -= terrainWorldSize }
+        if planeNode.position.x < -bound { planeNode.position.x += terrainWorldSize }
+        if planeNode.position.z > bound { planeNode.position.z -= terrainWorldSize }
+        if planeNode.position.z < -bound { planeNode.position.z += terrainWorldSize }
+
+        // --- 5. Target Balloons Collision ---
         for t in targetNodes where !t.isHidden {
-            let dist = planeNode.position.distance(to: t.position)
-            if dist < 5 {
+            if planeNode.position.distance(to: t.position) < 6.0 {
                 t.isHidden = true
-                DispatchQueue.main.async { self.onTargetHit?(t.position.x, t.position.z) }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
-                    t.position = SCNVector3(CGFloat.random(in: -300...300), CGFloat.random(in: 30...100), CGFloat.random(in: -300...300))
+                onTargetHit?(t.position.x, t.position.z)
+                SoundManager.shared.pickup()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+                    t.position = SCNVector3(CGFloat.random(in: -450...450), CGFloat.random(in: 40...100), CGFloat.random(in: -450...450))
                     t.isHidden = false
                 }
             }
         }
 
-        // 16. Sky dome follows camera (keeps sky infinite)
+        // Sky & Ocean follow camera
         skyDomeNode?.position = SCNVector3(planeNode.position.x, 0, planeNode.position.z)
+        oceanNode?.position = SCNVector3(planeNode.position.x, -1.0, planeNode.position.z)
 
-        // 17. Ocean follows camera (infinite water)
-        oceanNode?.position = SCNVector3(planeNode.position.x, -3, planeNode.position.z)
-
-        // 18. Altitude-adaptive fog (thinner at high altitude)
-        let altFactor = min(1.0, altitude / 300.0)
-        fogStartDistance = 250 + altFactor * 500
-        fogEndDistance = 1200 + altFactor * 1000
-
-        // 19. Update camera (chaser behind + above, smooth follow)
+        // Update Camera
         updateCamera(snap: false)
 
-        // 20. Stats telemetry to UI
-        let alt = Int(max(0, altitude))
-        let hdg = -heading * 180 / CGFloat.pi
-        let hdgNorm = hdg.truncatingRemainder(dividingBy: 360)
-        let pitchDeg = angleOfAttack * 180 / CGFloat.pi
-        let bankDeg = bank * 180 / CGFloat.pi
+        // --- 6. Telemetry & Zone Identification ---
+        altitude = Swift.max(0, planeNode.position.y - groundElev)
+        let hdgDeg = (-heading * 180 / CGFloat.pi).truncatingRemainder(dividingBy: 360)
+        let hdgNorm = (hdgDeg + 360).truncatingRemainder(dividingBy: 360)
+        let pitchDeg = Double(angleOfAttack * 180 / CGFloat.pi)
+        let bankDeg = Double(bank * 180 / CGFloat.pi)
+        gForce = Swift.max(0.5, 1.0 + Double(abs(verticalSpeed)) * 0.05 + (Double(effectiveThrottle) > 80 ? 0.4 : 0.0))
+
+        let (zoneName, subzoneName) = detectCurrentZone(x: px, z: pz)
+        let (nearestAf, distAf) = findNearestAirfield(x: px, z: pz)
+
+        let telem = FlightTelemetry(
+            altitude: altitude * 3.28084, // convert meters to feet
+            verticalSpeed: verticalSpeed,
+            airspeed: airspeed * 1.94384, // convert m/s to knots
+            headingDeg: hdgNorm,
+            isBoosting: boostHeld,
+            pitchDeg: pitchDeg,
+            bankDeg: bankDeg,
+            throttlePct: effectiveThrottle,
+            gForce: gForce,
+            gearDown: gearDown,
+            cameraMode: cameraMode,
+            zone: zoneName,
+            subzone: subzoneName,
+            posX: px,
+            posZ: pz,
+            nearestAirfield: nearestAf,
+            distToNearestAirfield: distAf,
+            onRunway: currentlyOnRunway
+        )
+
         DispatchQueue.main.async {
-            self.onStats?(CGFloat(alt), self.verticalSpeed, self.airspeed, hdgNorm, boosting, pitchDeg, bankDeg)
+            self.onTelemetry?(telem)
+            self.onStats?(CGFloat(self.altitude * 3.28), self.verticalSpeed, self.airspeed, CGFloat(hdgNorm), self.boostHeld, CGFloat(pitchDeg), CGFloat(bankDeg))
         }
     }
 
-    // Simple ground height query (height at given x,z — terrain graph)
-    private func groundHeight(at point: (x: CGFloat, z: CGFloat)) -> CGFloat {
-        return sampleHeight(worldX: point.x, worldZ: point.z)
+    // MARK: - GTA VI Zones & Navigation
+
+    private func detectCurrentZone(x: CGFloat, z: CGFloat) -> (String, String) {
+        if z < -240 {
+            return ("MOUNT KALAGA", "National Wilderness & Peaks")
+        } else if z > 320 {
+            return ("LEONIDA KEYS", "Tropical Coral Archipelago")
+        } else if x < -160 && z >= -160 && z < 50 {
+            return ("PORT GELLHORN", "Industrial Harbor & Bay")
+        } else if x < 30 && z >= 40 && z < 320 {
+            return ("GRASSRIVERS", "The Everglades Wetlands")
+        } else if z >= -220 && z < -40 && abs(x) < 200 {
+            return ("AMBROSIA", "Heartland Agricultural Plains")
+        } else if x > 40 && z >= -70 && z < 290 {
+            return ("VICE CITY", "Metropolitan Beach District")
+        } else {
+            return ("LEONIDA COAST", "Oceanic Flight Corridor")
+        }
     }
 
-    // MARK: - Camera (flight-sim quality chase cam)
+    private func findNearestAirfield(x: CGFloat, z: CGFloat) -> (String, CGFloat) {
+        var closestCode = "VCIA"
+        var minDist: CGFloat = 999999
+        for r in runways {
+            let dx = x - r.position.x
+            let dz = z - r.position.z
+            let d = sqrt(dx * dx + dz * dz)
+            if d < minDist {
+                minDist = d
+                closestCode = r.code
+            }
+        }
+        return (closestCode, minDist)
+    }
+
+    // Teleport / Respawn on nearest runway
+    func respawnAtNearestRunway() {
+        let (code, _) = findNearestAirfield(x: planeNode.position.x, z: planeNode.position.z)
+        guard let target = runways.first(where: { $0.code == code }) else { return }
+
+        let rad = target.headingDeg * Double.pi / 180.0
+        heading = CGFloat(rad)
+        planeNode.position = SCNVector3(target.position.x - CGFloat(cos(rad)) * 60, target.elevation + 0.35, target.position.z - CGFloat(sin(rad)) * 60)
+        planeNode.eulerAngles = SCNVector3(0, heading, 0)
+        airspeed = 0
+        verticalSpeed = 0
+        isGrounded = true
+        wasAirborne = false
+        gearDown = true
+        updateCamera(snap: true)
+    }
+
+    // MARK: - GTA Camera Modes
+
     private func updateCamera(snap: Bool) {
-        let back: CGFloat = 14, up: CGFloat = 5.5
-        let cx = planeNode.position.x + sin(heading) * back
-        let cz = planeNode.position.z + cos(heading) * back
-        let cy = planeNode.position.y + up
-        var target = SCNVector3(cx, cy, cz)
+        guard let camera = cameraNode.camera else { return }
 
-        // Speed-dependent camera shake (turbulence feel)
-        if airspeed > 35 {
-            let intensity = (airspeed - 35) * 0.003
-            target.x += CGFloat.random(in: -intensity...intensity)
-            target.y += CGFloat.random(in: -intensity...intensity)
-            target.z += CGFloat.random(in: -intensity...intensity)
+        var camDist: CGFloat = 14
+        var camUp: CGFloat = 4.5
+        var fov: CGFloat = 55
+
+        switch cameraMode {
+        case 0:
+            // Close Chase
+            camDist = 13.5
+            camUp = 4.2
+            fov = 55 + Swift.min(15, (airspeed - 20) * 0.4)
+        case 1:
+            // Wide Chase
+            camDist = 22.0
+            camUp = 7.0
+            fov = 65 + Swift.min(18, (airspeed - 20) * 0.5)
+        case 2:
+            // Cockpit / Nose View
+            camDist = -2.2
+            camUp = 0.8
+            fov = 70 + Swift.min(15, (airspeed - 20) * 0.3)
+        default:
+            break
         }
 
-        if snap { cameraNode.position = target }
-        else { cameraNode.position = cameraNode.position.lerp(to: target, t: 0.06) }
+        camera.fieldOfView = fov
 
-        // Camera always looks at plane, slightly below
-        let look = SCNVector3(planeNode.position.x - sin(heading) * 15,
-                              planeNode.position.y - 2,
-                              planeNode.position.z - cos(heading) * 15)
-        cameraNode.look(at: look)
+        let cx = planeNode.position.x + sin(heading) * camDist
+        let cz = planeNode.position.z + cos(heading) * camDist
+        let cy = planeNode.position.y + camUp
+        var targetCamPos = SCNVector3(cx, cy, cz)
 
-        // Dynamic FOV: wider at high speed (zoom effect)
-        let fovBase: CGFloat = 55
-        let speedFactor = min(15, (airspeed - 20) * 0.5)
-        cameraNode.camera?.fieldOfView = fovBase + speedFactor
+        // Subtle turbulence shake at high speed
+        if airspeed > 35 && cameraMode != 2 {
+            let shake = (airspeed - 35) * 0.004
+            targetCamPos.x += CGFloat.random(in: -shake...shake)
+            targetCamPos.y += CGFloat.random(in: -shake...shake)
+        }
+
+        if snap {
+            cameraNode.position = targetCamPos
+        } else {
+            cameraNode.position = cameraNode.position.lerp(to: targetCamPos, t: 0.16)
+        }
+
+        // Look at plane (or look ahead in cockpit)
+        if cameraMode == 2 {
+            let forwardLook = SCNVector3(
+                planeNode.position.x - sin(heading) * 100,
+                planeNode.position.y + angleOfAttack * 40,
+                planeNode.position.z + cos(heading) * 100
+            )
+            cameraNode.look(at: forwardLook)
+        } else {
+            cameraNode.look(at: SCNVector3(planeNode.position.x, planeNode.position.y + 0.5, planeNode.position.z))
+        }
     }
 }
 
@@ -1105,20 +1250,18 @@ private extension SCNVector3 {
         let dx = x - other.x, dy = y - other.y, dz = z - other.z
         return sqrt(dx * dx + dy * dy + dz * dz)
     }
-    var xz: (CGFloat, CGFloat) { (x, z) }
     func lerp(to other: SCNVector3, t: CGFloat) -> SCNVector3 {
         SCNVector3(x + (other.x - x) * t, y + (other.y - y) * t, z + (other.z - z) * t)
+    }
+    func normalized() -> SCNVector3 {
+        let len = sqrt(x * x + y * y + z * z)
+        guard len > 0.0001 else { return SCNVector3(0, 1, 0) }
+        return SCNVector3(x / len, y / len, z / len)
     }
 }
 
 private extension CGFloat {
     func clamped(to range: ClosedRange<CGFloat>) -> CGFloat {
-        Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
-    }
-}
-
-private extension Float {
-    func clamped(to range: ClosedRange<Float>) -> Float {
         Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
     }
 }
