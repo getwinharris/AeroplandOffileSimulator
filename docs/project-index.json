@@ -3,7 +3,7 @@
   "note": "Authoritative inventory of what exists. If it is not here, it does not exist \u2014 do not assume, add it first.",
   "summary": {
     "swift_files": 9,
-    "types": 26,
+    "types": 29,
     "screens": [
       "CelebrationView",
       "ContentView",
@@ -46,19 +46,57 @@
       "area": "Game",
       "types": [
         {
+          "kind": "struct",
+          "name": "FlightTelemetry"
+        },
+        {
+          "kind": "struct",
+          "name": "RunwayZone"
+        },
+        {
           "kind": "class",
           "name": "FlightScene"
         }
       ],
       "functions": [
+        "buildAllAirfields",
+        "buildAmbrosiaFacilities",
+        "buildClouds",
+        "buildEvergladesFacilities",
+        "buildKalagaFacilities",
+        "buildKeysFacilities",
+        "buildLakeLeonida",
+        "buildLeonidaLandmarks",
+        "buildLighting",
+        "buildOcean",
+        "buildPAPILights",
+        "buildPortGellhornFacilities",
+        "buildRunwaySurface",
+        "buildSkyDome",
+        "buildTerrain",
+        "buildVCIASpecialFacilities",
+        "buildViceCitySkyline",
         "buildWorld",
+        "calculateLeonidaBaseHeight",
+        "clamped",
+        "detectCurrentZone",
         "distance",
+        "findNearestAirfield",
+        "generateHeightMap",
+        "generateLeonidaDiffuseTexture",
+        "generateRunwayTexture",
+        "generateSkyGradientTexture",
         "lerp",
-        "makeBalloon",
-        "makeCloud",
-        "makeRing",
-        "makeStar",
+        "makeBuilding",
+        "makeControlTower",
+        "makeHangar",
+        "makeRealisticPalmTree",
+        "makeRealisticTree",
+        "makeTargetBalloon",
+        "normalized",
         "renderer",
+        "respawnAtNearestRunway",
+        "sampleHeight",
         "updateCamera"
       ]
     },
@@ -73,10 +111,14 @@
       ],
       "functions": [
         "loadRealPlane",
+        "makeLandingGear",
+        "makeNavigationLights",
         "makePlaneNode",
         "proceduralPlane",
         "setBoost",
+        "setGear",
         "spinPropeller",
+        "updateStrobes",
         "walk"
       ]
     },
@@ -97,10 +139,12 @@
         "boing",
         "click",
         "fanfare",
+        "gear",
         "pickup",
         "ring",
         "speak",
-        "tone"
+        "tone",
+        "touchdown"
       ]
     },
     {
@@ -114,12 +158,21 @@
         {
           "kind": "enum",
           "name": "Screen"
+        },
+        {
+          "kind": "struct",
+          "name": "LeonidaAirfield"
         }
       ],
       "functions": [
         "collectStar",
+        "cycleCamera",
+        "cycleFlaps",
         "flyThroughRing",
-        "startFlying"
+        "notify",
+        "startFlying",
+        "toggleBrakes",
+        "toggleGear"
       ]
     },
     {
@@ -166,6 +219,10 @@
         },
         {
           "kind": "struct",
+          "name": "GTA6RadarMinimap"
+        },
+        {
+          "kind": "struct",
           "name": "HudPill"
         },
         {
@@ -182,10 +239,6 @@
         },
         {
           "kind": "struct",
-          "name": "CompassStrip"
-        },
-        {
-          "kind": "struct",
           "name": "Horizon"
         },
         {
@@ -198,8 +251,12 @@
         }
       ],
       "functions": [
+        "cameraName",
+        "clamped",
         "makeCoordinator",
         "makeNSView",
+        "papiLightColor",
+        "papiStatusText",
         "steer",
         "updateNSView"
       ]

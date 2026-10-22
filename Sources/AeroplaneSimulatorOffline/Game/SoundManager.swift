@@ -53,6 +53,8 @@ final class SoundManager {
     func fanfare() { for (i, f) in [523, 659, 784, 1046].enumerated() { DispatchQueue.main.asyncAfter(deadline: .now()+Double(i)*0.12) { self.tone(freq: Float(f), duration: 0.25, type: .square, volume: 0.25) } } }
     func boing() { tone(freq: 220, duration: 0.3, type: .sine, volume: 0.4) }
     func click() { tone(freq: 700, duration: 0.07, volume: 0.25) }
+    func gear() { tone(freq: 330, duration: 0.12, type: .square, volume: 0.2); DispatchQueue.main.asyncAfter(deadline: .now()+0.1) { self.tone(freq: 440, duration: 0.16, type: .square, volume: 0.25) } }
+    func touchdown() { tone(freq: 180, duration: 0.2, type: .sine, volume: 0.35) }
 
     func speak(_ text: String) {
         guard enabled else { return }
