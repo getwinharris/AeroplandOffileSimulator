@@ -40,10 +40,15 @@ enum PlaneFactory {
         guard foundMesh else { return nil }
 
         // The MDL→SceneKit bridge copies the MTL ambient (Ka 1,1,1) into
-        // emission, which makes every model glow white. Kill emission so the
-        // real file colours show.
+        // emission, which makes every model glow white. Kill emission and
+        // switch to PBR so the real file colours show with realistic lighting.
         holder.enumerateChildNodes { node, _ in
-            node.geometry?.materials.forEach { $0.emission.contents = NSColor.black }
+            node.geometry?.materials.forEach {
+                $0.emission.contents = NSColor.black
+                $0.lightingModel = .physicallyBased
+                $0.roughness.contents = NSNumber(value: 0.5)
+                $0.metalness.contents = NSNumber(value: 0.1)
+            }
         }
 
         // Optional forced texture (when the MTL ships without one).
@@ -68,15 +73,19 @@ enum PlaneFactory {
             root.eulerAngles = SCNVector3(0, CGFloat(plane.yawCorrection), 0)
         }
 
-        // Boost rainbow trail (hidden unless boosting).
+        // Boost exhaust trail (hidden unless boosting).
         let trail = SCNNode(geometry: SCNCylinder(radius: 0.18, height: 6.0))
         trail.position = SCNVector3(0, 0, -6.0)
         trail.rotation = SCNVector4(1, 0, 0, Float(CGFloat.pi / 2))
-        trail.geometry?.firstMaterial?.diffuse.contents = NSColor.systemPink.withAlphaComponent(0.55)
-        trail.geometry?.firstMaterial?.emission.contents = NSColor.systemPink
-        trail.geometry?.firstMaterial?.transparency = 0.55
+        let trailMat = SCNMaterial()
+        trailMat.lightingModel = .constant
+        trailMat.diffuse.contents = NSColor(calibratedRed: 1.0, green: 0.45, blue: 0.2, alpha: 0.6)
+        trailMat.emission.contents = NSColor(calibratedRed: 1.0, green: 0.55, blue: 0.15, alpha: 1)
+        trailMat.transparency = 0.55
+        trail.geometry?.materials = [trailMat]
         trail.name = "trail"
         trail.isHidden = true
+        trail.castsShadow = false
         root.addChildNode(trail)
         return root
     }
@@ -84,60 +93,101 @@ enum PlaneFactory {
     // MARK: - Emergency procedural fallback (files always ship — never seen)
     static func proceduralPlane(for plane: KidPlane) -> SCNNode {
         let root = SCNNode()
-        let body = NSColor.systemRed
-        let wing = NSColor.white
 
+        // PBR fuselage
         let fuselage = SCNNode(geometry: SCNSphere(radius: 1.0))
         fuselage.scale = SCNVector3(1.0, 1.0, 2.6)
-        fuselage.geometry?.firstMaterial?.diffuse.contents = body
-        fuselage.geometry?.firstMaterial?.roughness.contents = NSNumber(value: 0.6)
+        let fusMat = SCNMaterial()
+        fusMat.lightingModel = .physicallyBased
+        fusMat.diffuse.contents = NSColor.systemRed
+        fusMat.roughness.contents = NSNumber(value: 0.4)
+        fusMat.metalness.contents = NSNumber(value: 0.15)
+        fuselage.geometry?.materials = [fusMat]
+        fuselage.castsShadow = true
         root.addChildNode(fuselage)
 
+        // PBR nose cone
         let nose = SCNNode(geometry: SCNSphere(radius: 0.55))
         nose.position = SCNVector3(0, -0.1, 2.5)
-        nose.geometry?.firstMaterial?.diffuse.contents = NSColor.white
+        let noseMat = SCNMaterial()
+        noseMat.lightingModel = .physicallyBased
+        noseMat.diffuse.contents = NSColor(calibratedWhite: 0.92, alpha: 1)
+        noseMat.roughness.contents = NSNumber(value: 0.3)
+        noseMat.metalness.contents = NSNumber(value: 0.2)
+        nose.geometry?.materials = [noseMat]
         root.addChildNode(nose)
 
+        // PBR cockpit glass
         let cockpit = SCNNode(geometry: SCNSphere(radius: 0.62))
         cockpit.position = SCNVector3(0, 0.75, 0.6)
         cockpit.scale = SCNVector3(1, 0.8, 1.3)
-        cockpit.geometry?.firstMaterial?.diffuse.contents = NSColor(calibratedRed: 0.65, green: 0.9, blue: 1.0, alpha: 1)
+        let glassMat = SCNMaterial()
+        glassMat.lightingModel = .physicallyBased
+        glassMat.diffuse.contents = NSColor(calibratedRed: 0.55, green: 0.82, blue: 0.95, alpha: 0.7)
+        glassMat.roughness.contents = NSNumber(value: 0.05) // very smooth glass
+        glassMat.metalness.contents = NSNumber(value: 0.0)
+        glassMat.transparency = 0.7
+        glassMat.fresnelExponent = 3.0
+        cockpit.geometry?.materials = [glassMat]
         root.addChildNode(cockpit)
 
+        // PBR wings
         let wings = SCNNode(geometry: SCNBox(width: 7.0, height: 0.16, length: 1.5, chamferRadius: 0.08))
         wings.position = SCNVector3(0, -0.05, 0.3)
-        wings.geometry?.firstMaterial?.diffuse.contents = wing
+        let wingMat = SCNMaterial()
+        wingMat.lightingModel = .physicallyBased
+        wingMat.diffuse.contents = NSColor(calibratedWhite: 0.95, alpha: 1)
+        wingMat.roughness.contents = NSNumber(value: 0.35)
+        wingMat.metalness.contents = NSNumber(value: 0.1)
+        wings.geometry?.materials = [wingMat]
+        wings.castsShadow = true
         root.addChildNode(wings)
 
+        // PBR tail fin
         let fin = SCNNode(geometry: SCNBox(width: 0.16, height: 1.6, length: 1.1, chamferRadius: 0.06))
         fin.position = SCNVector3(0, 0.85, -2.3)
-        fin.geometry?.firstMaterial?.diffuse.contents = wing
+        fin.geometry?.materials = [wingMat] // reuse wing material
+        fin.castsShadow = true
         root.addChildNode(fin)
 
         if plane.style == .jet || plane.style == .rocket || plane.style == .jumbo {
             let flame = SCNNode(geometry: SCNCone(topRadius: 0.1, bottomRadius: 0.45, height: 1.6))
             flame.position = SCNVector3(0, 0, -3.2)
             flame.rotation = SCNVector4(1, 0, 0, Float(CGFloat.pi / 2))
-            flame.geometry?.firstMaterial?.diffuse.contents = NSColor.orange
-            flame.geometry?.firstMaterial?.emission.contents = NSColor.orange
+            let flameMat = SCNMaterial()
+            flameMat.lightingModel = .constant
+            flameMat.diffuse.contents = NSColor(calibratedRed: 1.0, green: 0.55, blue: 0.1, alpha: 0.9)
+            flameMat.emission.contents = NSColor(calibratedRed: 1.0, green: 0.6, blue: 0.15, alpha: 1)
+            flame.geometry?.materials = [flameMat]
             flame.name = "exhaust"
+            flame.castsShadow = false
             root.addChildNode(flame)
         } else {
             let prop = SCNNode(geometry: SCNBox(width: 0.22, height: 3.2, length: 0.1, chamferRadius: 0.05))
             prop.position = SCNVector3(0, -0.1, 3.25)
-            prop.geometry?.firstMaterial?.diffuse.contents = NSColor.darkGray.withAlphaComponent(0.9)
+            let propMat = SCNMaterial()
+            propMat.lightingModel = .physicallyBased
+            propMat.diffuse.contents = NSColor(calibratedWhite: 0.25, alpha: 0.9)
+            propMat.roughness.contents = NSNumber(value: 0.3)
+            propMat.metalness.contents = NSNumber(value: 0.6) // metal propeller
+            prop.geometry?.materials = [propMat]
             prop.name = "propeller"
             root.addChildNode(prop)
         }
 
+        // PBR exhaust trail
         let trail = SCNNode(geometry: SCNCylinder(radius: 0.18, height: 6.0))
         trail.position = SCNVector3(0, 0, -5.5)
         trail.rotation = SCNVector4(1, 0, 0, Float(CGFloat.pi / 2))
-        trail.geometry?.firstMaterial?.diffuse.contents = NSColor.systemPink.withAlphaComponent(0.55)
-        trail.geometry?.firstMaterial?.emission.contents = NSColor.systemPink
-        trail.geometry?.firstMaterial?.transparency = 0.55
+        let trailMat = SCNMaterial()
+        trailMat.lightingModel = .constant
+        trailMat.diffuse.contents = NSColor(calibratedRed: 1.0, green: 0.45, blue: 0.2, alpha: 0.6)
+        trailMat.emission.contents = NSColor(calibratedRed: 1.0, green: 0.55, blue: 0.15, alpha: 1)
+        trailMat.transparency = 0.55
+        trail.geometry?.materials = [trailMat]
         trail.name = "trail"
         trail.isHidden = true
+        trail.castsShadow = false
         root.addChildNode(trail)
 
         root.scale = SCNVector3(0.9, 0.9, 0.9)

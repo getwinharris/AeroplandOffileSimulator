@@ -18,13 +18,13 @@ struct FlyView: View {
                     s.invertY = game.invertY
                     s.onStar = { game.collectStar() }
                     s.onRing = { game.flyThroughRing() }
-                    s.onStats = { speed, alt, boosting, hdg, pitch, bank in
-                        game.speedKnots = speed
+                    s.onStats = { alt, verticalSpeed, airspeed, hdgNorm, isBoosting, pitchDeg, bankDeg in
+                        game.speedKnots = CGFloat(airspeed * 1.9)  // convert m/s to knots roughly
                         game.altitude = alt
-                        game.isBoosting = boosting
-                        game.heading = Double(hdg)
-                        game.pitchDeg = Double(pitch)
-                        game.bankDeg = Double(bank)
+                        game.isBoosting = isBoosting
+                        game.heading = hdgNorm
+                        game.pitchDeg = pitchDeg
+                        game.bankDeg = bankDeg
                     }
                     scene = s
                 }
@@ -55,11 +55,11 @@ struct FlyView: View {
 
                 // MSFS-style tapes: speed left, horizon + altitude right
                 HStack {
-                    SpeedTape(knots: game.speedKnots)
+                    SpeedTape(knots: Int(game.speedKnots))
                     Spacer()
                     HStack(alignment: .bottom, spacing: 10) {
                         Horizon(pitch: game.pitchDeg, bank: game.bankDeg)
-                        AltitudeTape(feet: game.altitude)
+                        AltitudeTape(feet: Int(game.altitude))
                     }
                 }.padding(.horizontal, 16)
 
@@ -243,7 +243,7 @@ struct SceneKitFlyView: NSViewRepresentable {
            let i = args.firstIndex(of: "--shot"), i + 1 < args.count {
             context.coordinator.shotDone = true
             let path = args[i + 1]
-            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                 let img = nsView.snapshot()
                 if let tiff = img.tiffRepresentation,
                    let rep = NSBitmapImageRep(data: tiff),

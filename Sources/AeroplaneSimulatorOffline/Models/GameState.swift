@@ -9,8 +9,8 @@ final class GameState: ObservableObject {
     @Published var selectedPlane: KidPlane = KidPlane.all[1]
     @Published var stars: Int = 0
     @Published var rings: Int = 0
-    @Published var speedKnots: Int = 0
-    @Published var altitude: Int = 0
+    @Published var speedKnots: CGFloat = 0
+    @Published var altitude: CGFloat = 0
     @Published var heading: Double = 0
     @Published var pitchDeg: Double = 0
     @Published var bankDeg: Double = 0
