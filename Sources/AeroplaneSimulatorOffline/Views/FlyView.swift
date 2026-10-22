@@ -36,6 +36,10 @@ struct FlyView: View {
                         game.bankDeg = t.bankDeg
                         game.isBoosting = t.isBoosting
                         game.throttlePercent = t.throttlePct
+                        game.flapsDeg = t.flapsDeg
+                        game.isBraking = t.isBraking
+                        game.flightPhase = t.flightPhase
+                        game.papiState = t.papiState
                         game.gForce = t.gForce
                         game.gearDown = t.gearDown
                         game.cameraMode = t.cameraMode
@@ -68,6 +72,8 @@ struct FlyView: View {
                 .onChange(of: game.invertY) { scene?.invertY = $0 }
                 .onChange(of: game.gearDown) { scene?.gearDown = $0 }
                 .onChange(of: game.cameraMode) { scene?.cameraMode = $0 }
+                .onChange(of: game.flapsDeg) { scene?.flapsDeg = $0 }
+                .onChange(of: game.isBraking) { scene?.isBraking = $0 }
 
             VStack {
                 // Top bar: plane + stars + zone indicator + menu
@@ -113,12 +119,44 @@ struct FlyView: View {
                             .background(Color.black.opacity(0.65), in: Capsule())
                     }.buttonStyle(.plain)
 
+                    Button(action: { game.cycleFlaps() }) {
+                        Text("🛩️ FLAPS: \(game.flapsDeg)°")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundColor(.yellow)
+                            .padding(.horizontal, 12).padding(.vertical, 7)
+                            .background(Color.black.opacity(0.65), in: Capsule())
+                    }.buttonStyle(.plain)
+
                     Button("Menu 🔙") { SoundManager.shared.click(); game.screen = .menu }
                         .font(.system(size: 17, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
                         .padding(.horizontal, 16).padding(.vertical, 7)
                         .background(.ultraThinMaterial, in: Capsule())
                 }.padding(.horizontal, 16).padding(.top, 12)
+
+                // Flight Guidance & Phase Prompt Banner
+                VStack(spacing: 4) {
+                    if game.flightPhase == "ROTATE!" {
+                        Text("✈️ ROTATE! PULL BACK [S] TO CLIMB")
+                            .font(.system(size: 20, weight: .heavy, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 22).padding(.vertical, 8)
+                            .background(LinearGradient(colors: [.orange, .red], startPoint: .leading, endPoint: .trailing), in: Capsule())
+                            .shadow(color: .orange, radius: 10)
+                    } else if game.flightPhase == "FLARE!" {
+                        Text("🛬 FLARE! GENTLY LEVEL NOSE FOR TOUCHDOWN")
+                            .font(.system(size: 18, weight: .heavy, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 20).padding(.vertical, 7)
+                            .background(Color.blue.opacity(0.85), in: Capsule())
+                    } else if game.flightPhase == "PARKED" {
+                        Text("READY FOR TAKEOFF • HOLD [W] OR ADVANCE THROTTLE")
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .foregroundColor(.yellow)
+                            .padding(.horizontal, 18).padding(.vertical, 6)
+                            .background(Color.black.opacity(0.75), in: Capsule())
+                    }
+                }.padding(.top, 4)
 
                 // GTA VI Location Discovery Title Card
                 if showZoneBanner {
@@ -142,17 +180,17 @@ struct FlyView: View {
 
                 if let notice = game.activeNotice {
                     Text(notice)
-                        .font(.system(size: 18, weight: .black, design: .rounded))
+                        .font(.system(size: 17, weight: .black, design: .rounded))
                         .foregroundColor(.yellow)
                         .padding(.horizontal, 20).padding(.vertical, 8)
-                        .background(Color.black.opacity(0.8), in: Capsule())
+                        .background(Color.black.opacity(0.85), in: Capsule())
                         .overlay(Capsule().stroke(Color.yellow, lineWidth: 1.5))
                         .padding(.top, 4)
                 }
 
                 Spacer()
 
-                // Bottom HUD: GTA VI Radar Minimap (Left) + Flight Controls Pill (Center) + Flight Tapes (Right)
+                // Bottom HUD: GTA VI Radar Minimap (Left) + Interactive Throttle/Controls (Center) + Flight Tapes (Right)
                 HStack(alignment: .bottom, spacing: 16) {
                     // GTA VI Radar Minimap
                     GTA6RadarMinimap(
@@ -166,54 +204,102 @@ struct FlyView: View {
 
                     Spacer()
 
-                    // Center: Controls hint & Flight stats badge
+                    // Center: Interactive Speed & Throttle Quadrant + PAPI Lights
                     VStack(spacing: 8) {
-                        HStack(spacing: 12) {
-                            Text("THR: \(game.throttlePercent)%")
-                                .font(.system(size: 14, weight: .heavy, design: .monospaced))
-                                .foregroundColor(.cyan)
-                                .padding(.horizontal, 10).padding(.vertical, 5)
-                                .background(Color.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 6))
+                        // PAPI Approach Glidepath Display
+                        HStack(spacing: 8) {
+                            Text("PAPI:").font(.system(size: 11, weight: .bold, design: .rounded)).foregroundColor(.white.opacity(0.7))
+                            HStack(spacing: 5) {
+                                ForEach(0..<4) { i in
+                                    Circle()
+                                        .fill(papiLightColor(index: i, state: game.papiState))
+                                        .frame(width: 9, height: 9)
+                                        .shadow(color: papiLightColor(index: i, state: game.papiState), radius: 3)
+                                }
+                            }
+                            Text(papiStatusText(game.papiState))
+                                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                                .foregroundColor(game.papiState == 2 ? .green : (game.papiState < 2 ? .cyan : .red))
+                        }
+                        .padding(.horizontal, 14).padding(.vertical, 5)
+                        .background(Color.black.opacity(0.65), in: Capsule())
 
-                            Text(String(format: "%.1f G", game.gForce))
-                                .font(.system(size: 14, weight: .heavy, design: .monospaced))
-                                .foregroundColor(.yellow)
-                                .padding(.horizontal, 10).padding(.vertical, 5)
-                                .background(Color.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 6))
+                        // Interactive Throttle Quadrant & Speed Sliders
+                        HStack(spacing: 12) {
+                            // Throttle Level
+                            HStack(spacing: 6) {
+                                Text("THR").font(.system(size: 12, weight: .black, design: .rounded)).foregroundColor(.cyan)
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.75)).frame(width: 90, height: 18)
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(LinearGradient(colors: [.cyan, .pink], startPoint: .leading, endPoint: .trailing))
+                                        .frame(width: CGFloat(game.throttlePercent) * 0.9, height: 18)
+                                    Text("\(game.throttlePercent)%")
+                                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                                        .foregroundColor(.white)
+                                        .frame(width: 90, alignment: .center)
+                                }
+                            }
+
+                            // Quick Power presets
+                            Button("IDLE") { scene?.throttlePct = 0; scene?.isBraking = true }
+                                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 7).padding(.vertical, 4)
+                                .background(Color.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 5))
+                                .buttonStyle(.plain)
+
+                            Button("50%") { scene?.throttlePct = 50; scene?.isBraking = false }
+                                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 7).padding(.vertical, 4)
+                                .background(Color.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 5))
+                                .buttonStyle(.plain)
+
+                            Button("100%") { scene?.throttlePct = 100; scene?.isBraking = false }
+                                .font(.system(size: 11, weight: .heavy, design: .rounded))
+                                .foregroundColor(.pink)
+                                .padding(.horizontal, 7).padding(.vertical, 4)
+                                .background(Color.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 5))
+                                .buttonStyle(.plain)
 
                             Button(action: { scene?.respawnAtNearestRunway() }) {
-                                Text("🛬 RESPAWN RUNWAY [R]")
-                                    .font(.system(size: 13, weight: .black, design: .rounded))
-                                    .foregroundColor(.pink)
-                                    .padding(.horizontal, 10).padding(.vertical, 5)
-                                    .background(Color.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 6))
+                                Text("🛬 RUNWAY [R]")
+                                    .font(.system(size: 11, weight: .black, design: .rounded))
+                                    .foregroundColor(.yellow)
+                                    .padding(.horizontal, 8).padding(.vertical, 4)
+                                    .background(Color.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 5))
                             }.buttonStyle(.plain)
                         }
+                        .padding(.horizontal, 14).padding(.vertical, 6)
+                        .background(Color.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 10))
 
-                        // GTA V keyboard controls cheat sheet
-                        HStack(spacing: 10) {
-                            Text("W/S: Pitch/Gas")
+                        // Controls guide
+                        HStack(spacing: 8) {
+                            Text("W: Gas/Pitch")
+                            Text("•")
+                            Text("S: Brake/Pull-up")
                             Text("•")
                             Text("A/D: Roll")
                             Text("•")
                             Text("Q/E: Rudder")
                             Text("•")
-                            Text("Shift: Throttle")
-                            Text("•")
                             Text("G: Gear")
+                            Text("•")
+                            Text("F: Flaps")
                             Text("•")
                             Text("C: Cam")
                         }
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
                         .foregroundColor(.white.opacity(0.85))
-                        .padding(.horizontal, 16).padding(.vertical, 7)
+                        .padding(.horizontal, 16).padding(.vertical, 6)
                         .background(Color.black.opacity(0.65), in: Capsule())
                         .overlay(Capsule().stroke(LinearGradient(colors: [.cyan.opacity(0.5), .pink.opacity(0.5)], startPoint: .leading, endPoint: .trailing), lineWidth: 1))
                     }
 
                     Spacer()
 
-                    // Right: MSFS-style instruments
+                    // Right: Instruments (Speed, Horizon, Altitude)
                     HStack(alignment: .bottom, spacing: 10) {
                         SpeedTape(knots: Int(game.speedKnots))
                         Horizon(pitch: game.pitchDeg, bank: game.bankDeg)
@@ -241,6 +327,29 @@ struct FlyView: View {
         default: return "🎥 CAM"
         }
     }
+
+    private func papiLightColor(index: Int, state: Int) -> Color {
+        // state 0: 4 White, state 1: 3W 1R, state 2: 2W 2R (on slope), state 3: 1W 3R, state 4: 4 Red
+        switch state {
+        case 0: return .white
+        case 1: return index < 3 ? .white : .red
+        case 2: return index < 2 ? .white : .red
+        case 3: return index < 1 ? .white : .red
+        case 4: return .red
+        default: return .white
+        }
+    }
+
+    private func papiStatusText(_ state: Int) -> String {
+        switch state {
+        case 0: return "HIGH"
+        case 1: return "SLIGHTLY HIGH"
+        case 2: return "ON GLIDEPATH"
+        case 3: return "SLIGHTLY LOW"
+        case 4: return "LOW"
+        default: return "ON GLIDEPATH"
+        }
+    }
 }
 
 // MARK: - GTA VI Radar Minimap
@@ -258,18 +367,15 @@ struct GTA6RadarMinimap: View {
     var body: some View {
         HStack(alignment: .bottom, spacing: 6) {
             ZStack {
-                // Background dark tinted glass disc
                 Circle()
                     .fill(Color(red: 0.05, green: 0.08, blue: 0.15).opacity(0.88))
                     .frame(width: radarRadius * 2, height: radarRadius * 2)
 
-                // Range circles
                 Circle().stroke(Color.cyan.opacity(0.25), lineWidth: 1)
                     .frame(width: radarRadius * 1.2, height: radarRadius * 1.2)
                 Circle().stroke(Color.cyan.opacity(0.15), lineWidth: 1)
                     .frame(width: radarRadius * 0.6, height: radarRadius * 0.6)
 
-                // Crosshair lines
                 Path { p in
                     p.move(to: CGPoint(x: radarRadius, y: 15))
                     p.addLine(to: CGPoint(x: radarRadius, y: radarRadius * 2 - 15))
@@ -277,7 +383,6 @@ struct GTA6RadarMinimap: View {
                     p.addLine(to: CGPoint(x: radarRadius * 2 - 15, y: radarRadius))
                 }.stroke(Color.cyan.opacity(0.18), lineWidth: 1)
 
-                // Airfield Blips on Radar
                 ForEach(airfields) { af in
                     let dx = (af.position.x - posX) * 0.16
                     let dz = (af.position.y - posZ) * 0.16
@@ -285,7 +390,6 @@ struct GTA6RadarMinimap: View {
                     let clampedDist = min(radarRadius - 14, dist)
                     let angle = atan2(dz, dx)
 
-                    // Rotate according to heading so radar is heading-up
                     let radHdg = heading * Double.pi / 180.0
                     let rx = cos(angle - CGFloat(radHdg)) * clampedDist
                     let ry = sin(angle - CGFloat(radHdg)) * clampedDist
@@ -299,7 +403,6 @@ struct GTA6RadarMinimap: View {
                     .offset(x: rx, y: ry)
                 }
 
-                // Player Aircraft Icon in center (pointing UP)
                 VStack(spacing: 0) {
                     Image(systemName: "airplane")
                         .font(.system(size: 20, weight: .black))
@@ -307,7 +410,6 @@ struct GTA6RadarMinimap: View {
                         .shadow(color: .cyan, radius: 4)
                 }
 
-                // North Indicator on the perimeter
                 let northAngle = -heading * Double.pi / 180.0 - Double.pi / 2
                 let nx = cos(northAngle) * Double(radarRadius - 10)
                 let ny = sin(northAngle) * Double(radarRadius - 10)
@@ -316,7 +418,6 @@ struct GTA6RadarMinimap: View {
                     .foregroundColor(.pink)
                     .offset(x: CGFloat(nx), y: CGFloat(ny))
 
-                // Signature GTA VI double neon border
                 Circle()
                     .stroke(
                         LinearGradient(colors: [.pink, .purple, .cyan], startPoint: .topLeading, endPoint: .bottomTrailing),
@@ -365,7 +466,6 @@ struct CelebrationView: View {
     }
 }
 
-/// Airspeed Tape (knots)
 struct SpeedTape: View {
     let knots: Int
     var body: some View {
@@ -390,7 +490,6 @@ struct SpeedTape: View {
     }
 }
 
-/// Altitude Tape (feet)
 struct AltitudeTape: View {
     let feet: Int
     var body: some View {
@@ -413,7 +512,6 @@ struct AltitudeTape: View {
     }
 }
 
-/// Artificial Horizon Gyro
 struct Horizon: View {
     let pitch: Double
     let bank: Double
@@ -430,7 +528,6 @@ struct Horizon: View {
             .offset(y: CGFloat(pitch.clamped(to: -30...30)) * 1.5)
             .rotationEffect(.degrees(-bank))
 
-            // Airplane reticle
             HStack(spacing: 12) {
                 Rectangle().fill(Color.yellow).frame(width: 25, height: 3)
                 Circle().fill(Color.yellow).frame(width: 6, height: 6)
@@ -511,7 +608,6 @@ final class FlySCNView: SCNView {
         window?.makeFirstResponder(self)
     }
 
-    // Mouse steering
     override func mouseMoved(with event: NSEvent) { steer(with: event) }
     override func mouseDragged(with event: NSEvent) { steer(with: event); gameScene?.boostHeld = true }
     override func mouseDown(with event: NSEvent) { gameScene?.boostHeld = true }
@@ -531,14 +627,19 @@ final class FlySCNView: SCNView {
         }
     }
 
-    // GTA V Keyboard Controls
     override func keyDown(with event: NSEvent) {
         switch event.keyCode {
         case 53: // ESC → menu
             NotificationCenter.default.post(name: .init("BackToMenu"), object: nil)
-        case 13, 126: // W or Up Arrow → Pitch Down (dive)
+        case 13: // W → Advance throttle / pitch down
+            gameScene?.throttleChange = 1.0
+            gameScene?.pitchInput = -0.5
+        case 126: // Up Arrow → Pitch Down
             gameScene?.pitchInput = -1.0
-        case 1, 125:  // S or Down Arrow → Pitch Up (climb)
+        case 1:  // S → Pull back (pitch up / rotate) & brake on ground
+            gameScene?.pitchInput = 1.0
+            gameScene?.throttleChange = -0.5
+        case 125: // Down Arrow → Pitch Up
             gameScene?.pitchInput = 1.0
         case 0, 123:  // A or Left Arrow → Roll Left
             gameScene?.rollInput = -1.0
@@ -553,12 +654,24 @@ final class FlySCNView: SCNView {
                 gs.gearDown.toggle()
                 SoundManager.shared.gear()
             }
+        case 3:       // F → Cycle Flaps (0 -> 15 -> 30)
+            if let gs = gameScene {
+                if gs.flapsDeg == 0 { gs.flapsDeg = 15 }
+                else if gs.flapsDeg == 15 { gs.flapsDeg = 30 }
+                else { gs.flapsDeg = 0 }
+                SoundManager.shared.click()
+            }
+        case 11:      // B → Toggle Wheel Brakes
+            if let gs = gameScene {
+                gs.isBraking.toggle()
+                SoundManager.shared.click()
+            }
         case 8, 9:    // C or V → Cycle Camera Modes
             if let gs = gameScene {
                 gs.cameraMode = (gs.cameraMode + 1) % 3
                 SoundManager.shared.click()
             }
-        case 15:      // R → Respawn / Reset to nearest runway
+        case 15:      // R → Respawn on nearest runway
             gameScene?.respawnAtNearestRunway()
             SoundManager.shared.fanfare()
         case 49:      // Spacebar → Emergency Boost
@@ -570,7 +683,13 @@ final class FlySCNView: SCNView {
 
     override func keyUp(with event: NSEvent) {
         switch event.keyCode {
-        case 13, 1, 126, 125: // W, S, Up, Down
+        case 13: // W
+            gameScene?.throttleChange = 0
+            gameScene?.pitchInput = 0
+        case 1:  // S
+            gameScene?.throttleChange = 0
+            gameScene?.pitchInput = 0
+        case 126, 125: // Up, Down
             gameScene?.pitchInput = 0
         case 0, 2, 123, 124:  // A, D, Left, Right
             gameScene?.rollInput = 0

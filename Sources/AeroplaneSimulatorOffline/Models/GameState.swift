@@ -24,7 +24,11 @@ final class GameState: ObservableObject {
     @Published var currentZone: String = "VICE CITY"
     @Published var currentSubzone: String = "Metro International"
     @Published var gearDown: Bool = true
-    @Published var throttlePercent: Int = 60
+    @Published var throttlePercent: Int = 0
+    @Published var flapsDeg: Int = 0          // 0, 15, 30
+    @Published var isBraking: Bool = false
+    @Published var flightPhase: String = "TAXI"
+    @Published var papiState: Int = 2
     @Published var gForce: Double = 1.0
     @Published var cameraMode: Int = 0 // 0: Close Chase, 1: Far Chase, 2: Cockpit
     @Published var planePosX: CGFloat = 220
@@ -51,6 +55,20 @@ final class GameState: ObservableObject {
         SoundManager.shared.click()
         let names = ["🎥 CHASE (CLOSE)", "🎥 CHASE (WIDE)", "🎥 COCKPIT / NOSE"]
         notify(names[cameraMode])
+    }
+
+    func cycleFlaps() {
+        if flapsDeg == 0 { flapsDeg = 15 }
+        else if flapsDeg == 15 { flapsDeg = 30 }
+        else { flapsDeg = 0 }
+        SoundManager.shared.click()
+        notify("🛩️ FLAPS: \(flapsDeg)°")
+    }
+
+    func toggleBrakes() {
+        isBraking.toggle()
+        SoundManager.shared.click()
+        notify(isBraking ? "🛑 BRAKES: APPLIED" : "🟢 BRAKES: RELEASED")
     }
 
     func notify(_ text: String) {

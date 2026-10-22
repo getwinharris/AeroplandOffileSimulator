@@ -69,6 +69,7 @@
         "buildLeonidaLandmarks",
         "buildLighting",
         "buildOcean",
+        "buildPAPILights",
         "buildPortGellhornFacilities",
         "buildRunwaySurface",
         "buildSkyDome",
@@ -83,6 +84,7 @@
         "findNearestAirfield",
         "generateHeightMap",
         "generateLeonidaDiffuseTexture",
+        "generateRunwayTexture",
         "generateSkyGradientTexture",
         "lerp",
         "makeBuilding",
@@ -109,10 +111,14 @@
       ],
       "functions": [
         "loadRealPlane",
+        "makeLandingGear",
+        "makeNavigationLights",
         "makePlaneNode",
         "proceduralPlane",
         "setBoost",
+        "setGear",
         "spinPropeller",
+        "updateStrobes",
         "walk"
       ]
     },
@@ -161,9 +167,11 @@
       "functions": [
         "collectStar",
         "cycleCamera",
+        "cycleFlaps",
         "flyThroughRing",
         "notify",
         "startFlying",
+        "toggleBrakes",
         "toggleGear"
       ]
     },
@@ -247,6 +255,8 @@
         "clamped",
         "makeCoordinator",
         "makeNSView",
+        "papiLightColor",
+        "papiStatusText",
         "steer",
         "updateNSView"
       ]
